@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Eye, Trash2, ChevronRight } from 'lucide-react';
+import { Plus, Search, Eye, Trash2, ChevronRight, Filter, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
 
@@ -9,6 +9,8 @@ import {
   updateSubsidyStatus, updateSubsidyDocumentChecklist,
   addSubsidyQuery, updateSubsidyQuery, addSubsidyTimelineEntry,
   updateGocCredentials,
+  updateSubsidyNhbDetails, updateSubsidyGocDetails,
+  updateSubsidyPayment, updateSubsidyVerification,
 } from '../services/subsidyService';
 import { getClients } from '../services/clientService';
 import useAuth from '../hooks/useAuth';
@@ -25,93 +27,80 @@ import Card from '../components/common/Card';
 import { StatusBadge } from '../components/common/Badge';
 import Badge from '../components/common/Badge';
 import { formatDate, daysAgo } from '../utils/dateFormat';
-import { PRIORITIES, PRIORITY_COLORS } from '../utils/constants';
+import { PRIORITIES } from '../utils/constants';
 
-// ─── GOC Credentials Panel ────────────────────────────────────────────────────
+// ─── Inline Badge Components ─────────────────────────────────────────────────
 
-const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
+const SCHEME_META = {
+  nhb:     { label: 'NHB',     color: 'green'  },
+  general: { label: 'General', color: 'yellow' },
+  aif:     { label: 'AIF',     color: 'purple' },
+  none:    { label: '—',       color: 'gray'   },
+};
+
+const VERIFY_META = {
+  'not-started': { label: 'Not Started', color: 'gray'   },
+  pending:       { label: 'Pending',     color: 'yellow' },
+  completed:     { label: 'Completed',   color: 'green'  },
+};
+
+const NHB_PORTAL_META = {
+  'goc-new':        { label: 'GOC New',        color: 'gray'   },
+  'goc-processing': { label: 'GOC Processing', color: 'blue'   },
+  'query-issued':   { label: 'Query Issued',   color: 'red'    },
+  'query-replied':  { label: 'Query Replied',  color: 'orange' },
+  'goc-received':   { label: 'GOC Received',   color: 'green'  },
+};
+
+const GOC_STATUS_META = {
+  'not-started': { label: 'Not Started', color: 'gray'   },
+  applied:       { label: 'Applied',     color: 'blue'   },
+  approved:      { label: 'Approved',    color: 'green'  },
+  rejected:      { label: 'Rejected',    color: 'red'    },
+};
+
+const SchemeBadge = ({ value }) => {
+  const meta = SCHEME_META[value] || SCHEME_META.none;
+  return <Badge color={meta.color}>{meta.label}</Badge>;
+};
+
+const VerificationBadge = ({ value }) => {
+  const meta = VERIFY_META[value] || VERIFY_META['not-started'];
+  return <Badge color={meta.color}>{meta.label}</Badge>;
+};
+
+const NHBStatusBadge = ({ value }) => {
+  if (!value) return <span className="text-gray-300 text-sm">—</span>;
+  const meta = NHB_PORTAL_META[value] || { label: value, color: 'gray' };
+  return <Badge color={meta.color}>{meta.label}</Badge>;
+};
+
+// ─── Reusable Editable Panel ─────────────────────────────────────────────────
+
+const EditablePanel = ({ title, subtitle, canEdit, saving, onSave, onCancel, children, viewContent }) => {
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({
-    email: credentials?.email ?? '',
-    mobile: credentials?.mobile ?? '',
-    password: '',
-  });
-  const [showPass, setShowPass] = useState(false);
-
-  useEffect(() => {
-    setForm({ email: credentials?.email ?? '', mobile: credentials?.mobile ?? '', password: '' });
-  }, [credentials]);
-
-  const mutation = useMutation({
-    mutationFn: (data) => updateGocCredentials(applicationId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['subsidies'] });
-      toast.success('GOC credentials saved');
-      setEditing(false);
-    },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
-  });
-
-  const canEdit = can('subsidies.update');
-
   return (
-    <div className="max-w-lg space-y-5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">General Officer Certificate (GOC)</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Portal login credentials for the GOC application</p>
+          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+          {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
         </div>
         {canEdit && !editing && (
-          <button
-            className="text-sm text-primary-600 font-medium hover:underline"
-            onClick={() => setEditing(true)}
-          >Edit</button>
+          <button className="text-sm text-primary-600 font-medium hover:underline" onClick={() => setEditing(true)}>Edit</button>
         )}
       </div>
-
       {!editing ? (
-        <div className="space-y-4">
-          {[['Email ID', credentials?.email], ['Mobile No.', credentials?.mobile], ['Password', credentials?._passwordEncrypted ? '••••••••' : null]].map(([label, value]) => (
-            <div key={label} className="flex flex-col gap-0.5">
-              <span className="text-xs text-gray-400 font-medium">{label}</span>
-              <span className={`text-sm ${value ? 'text-gray-800' : 'text-gray-300 italic'}`}>{value || 'Not set'}</span>
-            </div>
-          ))}
-        </div>
+        viewContent
       ) : (
         <div className="space-y-4 bg-gray-50 rounded-xl p-5 border border-gray-100">
-          <div>
-            <label className="label-base">Email ID</label>
-            <input type="email" className="input-base" placeholder="email@example.com"
-              value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} />
-          </div>
-          <div>
-            <label className="label-base">Mobile No.</label>
-            <input type="tel" className="input-base" placeholder="10-digit mobile number"
-              value={form.mobile} onChange={(e) => setForm(f => ({ ...f, mobile: e.target.value }))} />
-          </div>
-          <div>
-            <label className="label-base">
-              Password {credentials?._passwordEncrypted && <span className="text-gray-400 font-normal">(leave blank to keep current)</span>}
-            </label>
-            <div className="relative">
-              <input
-                type={showPass ? 'text' : 'password'}
-                className="input-base pr-16"
-                placeholder={credentials?._passwordEncrypted ? 'Enter new password to change' : 'Set password'}
-                value={form.password}
-                onChange={(e) => setForm(f => ({ ...f, password: e.target.value }))}
-              />
-              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary-600 font-medium"
-                onClick={() => setShowPass(v => !v)}>{showPass ? 'Hide' : 'Show'}</button>
-            </div>
-          </div>
+          {children}
           <div className="flex justify-end gap-2 pt-1">
             <button className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
-              onClick={() => setEditing(false)}>Cancel</button>
+              onClick={() => { setEditing(false); onCancel?.(); }}>Cancel</button>
             <button className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60"
-              disabled={mutation.isPending} onClick={() => mutation.mutate(form)}>
-              {mutation.isPending ? 'Saving...' : 'Save'}
+              disabled={saving} onClick={() => onSave(() => setEditing(false))}>
+              {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>
@@ -120,28 +109,488 @@ const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
   );
 };
 
+const InfoRow = ({ label, value, mono }) => (
+  <div className="flex flex-col gap-0.5">
+    <span className="text-xs text-gray-400 font-medium">{label}</span>
+    <span className={`text-sm ${value ? 'text-gray-800' : 'text-gray-300 italic'} ${mono ? 'font-mono' : ''}`}>
+      {value || 'Not set'}
+    </span>
+  </div>
+);
+
+// ─── GOC Credentials Panel ────────────────────────────────────────────────────
+
+const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
+  const [form, setForm] = useState({ email: '', mobile: '', password: '' });
+  const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    setForm({ email: credentials?.email ?? '', mobile: credentials?.mobile ?? '', password: '' });
+  }, [credentials]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateGocCredentials(applicationId, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('GOC credentials saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  return (
+    <EditablePanel
+      title="General Officer Certificate (GOC)"
+      subtitle="Portal login credentials for the GOC application"
+      canEdit={can('subsidies.update')}
+      saving={mutation.isPending}
+      onSave={(close) => mutation.mutate(form, { onSuccess: close })}
+      viewContent={
+        <div className="space-y-4">
+          <InfoRow label="Email ID"  value={credentials?.email} />
+          <InfoRow label="Mobile No." value={credentials?.mobile} />
+          <InfoRow label="Password"   value={credentials?._passwordEncrypted ? '••••••••' : null} />
+        </div>
+      }
+    >
+      <div>
+        <label className="label-base">Email ID</label>
+        <input type="email" className="input-base" placeholder="email@example.com"
+          value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label-base">Mobile No.</label>
+        <input type="tel" className="input-base" placeholder="10-digit mobile number"
+          value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
+      </div>
+      <div>
+        <label className="label-base">
+          Password {credentials?._passwordEncrypted && <span className="text-gray-400 font-normal">(leave blank to keep current)</span>}
+        </label>
+        <div className="relative">
+          <input type={showPass ? 'text' : 'password'} className="input-base pr-16"
+            placeholder={credentials?._passwordEncrypted ? 'Enter new password to change' : 'Set password'}
+            value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+          <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary-600 font-medium"
+            onClick={() => setShowPass(v => !v)}>{showPass ? 'Hide' : 'Show'}</button>
+        </div>
+      </div>
+    </EditablePanel>
+  );
+};
+
+// ─── NHB Details Panel ────────────────────────────────────────────────────────
+
+const NhbDetailsPanel = ({ applicationId, nhbDetails, qc, can }) => {
+  const [form, setForm] = useState({ nhbId: '', nhbPassword: '', nhbProjectCode: '', nhbPortalStatus: '' });
+  const [showPass, setShowPass] = useState(false);
+
+  useEffect(() => {
+    setForm({
+      nhbId:          nhbDetails?.nhbId ?? '',
+      nhbPassword:    '',
+      nhbProjectCode: nhbDetails?.nhbProjectCode ?? '',
+      nhbPortalStatus: nhbDetails?.nhbPortalStatus ?? 'goc-new',
+    });
+  }, [nhbDetails]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyNhbDetails(applicationId, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('NHB details saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  return (
+    <EditablePanel
+      title="NHB Portal Details"
+      subtitle="NHB credentials and project information"
+      canEdit={can('subsidies.update')}
+      saving={mutation.isPending}
+      onSave={(close) => mutation.mutate(form, { onSuccess: close })}
+      viewContent={
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <InfoRow label="NHB ID"           value={nhbDetails?.nhbId} mono />
+          <InfoRow label="NHB Password"     value={nhbDetails?._nhbPasswordEncrypted ? '••••••••' : null} />
+          <InfoRow label="NHB Project Code" value={nhbDetails?.nhbProjectCode} mono />
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">NHB Portal Status</span>
+            <NHBStatusBadge value={nhbDetails?.nhbPortalStatus} />
+          </div>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="label-base">NHB ID</label>
+          <input className="input-base font-mono" placeholder="NHB portal user ID"
+            value={form.nhbId} onChange={e => setForm(f => ({ ...f, nhbId: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">
+            NHB Password {nhbDetails?._nhbPasswordEncrypted && <span className="text-gray-400 font-normal">(leave blank to keep)</span>}
+          </label>
+          <div className="relative">
+            <input type={showPass ? 'text' : 'password'} className="input-base pr-16"
+              placeholder={nhbDetails?._nhbPasswordEncrypted ? 'Enter to change' : 'Set password'}
+              value={form.nhbPassword} onChange={e => setForm(f => ({ ...f, nhbPassword: e.target.value }))} />
+            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary-600 font-medium"
+              onClick={() => setShowPass(v => !v)}>{showPass ? 'Hide' : 'Show'}</button>
+          </div>
+        </div>
+        <div>
+          <label className="label-base">NHB Project Code</label>
+          <input className="input-base font-mono" placeholder="e.g. NHB-2026-1234"
+            value={form.nhbProjectCode} onChange={e => setForm(f => ({ ...f, nhbProjectCode: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">NHB Portal Status</label>
+          <select className="input-base" value={form.nhbPortalStatus} onChange={e => setForm(f => ({ ...f, nhbPortalStatus: e.target.value }))}>
+            {Object.entries(NHB_PORTAL_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+          </select>
+        </div>
+      </div>
+    </EditablePanel>
+  );
+};
+
+// ─── Verification Panel ───────────────────────────────────────────────────────
+
+const VERIFY_OPTIONS = ['not-started', 'pending', 'completed'];
+
+const VerificationToggle = ({ label, value, onChange }) => (
+  <div className="space-y-2">
+    <p className="text-sm font-medium text-gray-700">{label}</p>
+    <div className="flex gap-1 p-1 bg-gray-100 rounded-lg w-fit">
+      {VERIFY_OPTIONS.map(opt => (
+        <button key={opt} onClick={() => onChange(opt)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+            value === opt
+              ? opt === 'completed' ? 'bg-green-600 text-white shadow-sm'
+              : opt === 'pending'   ? 'bg-yellow-500 text-white shadow-sm'
+              : 'bg-gray-400 text-white shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}>
+          {opt === 'not-started' ? 'Not Started' : opt.charAt(0).toUpperCase() + opt.slice(1)}
+        </button>
+      ))}
+    </div>
+  </div>
+);
+
+const VerificationPanel = ({ applicationId, app, qc, can }) => {
+  const [bankStatus, setBankStatus] = useState(app.bankVerificationStatus || 'not-started');
+  const [bankDate, setBankDate]     = useState(app.bankVerificationDate ? new Date(app.bankVerificationDate).toISOString().slice(0, 10) : '');
+  const [geoStatus, setGeoStatus]   = useState(app.geoTaggingStatus || 'not-started');
+  const [geoDate, setGeoDate]       = useState(app.geoTaggingDate    ? new Date(app.geoTaggingDate).toISOString().slice(0, 10)    : '');
+
+  useEffect(() => {
+    setBankStatus(app.bankVerificationStatus || 'not-started');
+    setBankDate(app.bankVerificationDate ? new Date(app.bankVerificationDate).toISOString().slice(0, 10) : '');
+    setGeoStatus(app.geoTaggingStatus || 'not-started');
+    setGeoDate(app.geoTaggingDate ? new Date(app.geoTaggingDate).toISOString().slice(0, 10) : '');
+  }, [app]);
+
+  const handleBankStatusChange = (val) => {
+    setBankStatus(val);
+    if (val === 'completed' && !bankDate) setBankDate(new Date().toISOString().slice(0, 10));
+  };
+  const handleGeoStatusChange = (val) => {
+    setGeoStatus(val);
+    if (val === 'completed' && !geoDate) setGeoDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyVerification(applicationId, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('Verification updated'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  const canEdit = can('subsidies.update');
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* Bank Verification */}
+        <div className="card p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center text-base">🏦</div>
+            <p className="font-medium text-gray-800">Bank Verification</p>
+          </div>
+          {canEdit ? (
+            <VerificationToggle label="Status" value={bankStatus} onChange={handleBankStatusChange} />
+          ) : (
+            <VerificationBadge value={bankStatus} />
+          )}
+          <div>
+            <label className="label-base">Verified Date</label>
+            <input type="date" className="input-base" value={bankDate}
+              disabled={!canEdit} onChange={e => setBankDate(e.target.value)} />
+          </div>
+        </div>
+
+        {/* Geo Tagging */}
+        <div className="card p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-green-50 flex items-center justify-center text-base">📍</div>
+            <p className="font-medium text-gray-800">Geo-Tagging</p>
+          </div>
+          {canEdit ? (
+            <VerificationToggle label="Status" value={geoStatus} onChange={handleGeoStatusChange} />
+          ) : (
+            <VerificationBadge value={geoStatus} />
+          )}
+          <div>
+            <label className="label-base">Tagged Date</label>
+            <input type="date" className="input-base" value={geoDate}
+              disabled={!canEdit} onChange={e => setGeoDate(e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button loading={mutation.isPending} onClick={() => mutation.mutate({
+            bankVerificationStatus: bankStatus,
+            bankVerificationDate:   bankDate || undefined,
+            geoTaggingStatus:       geoStatus,
+            geoTaggingDate:         geoDate  || undefined,
+          })}>Save Verification</Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Payment Panel ────────────────────────────────────────────────────────────
+
+const PaymentPanel = ({ applicationId, paymentDetails, qc, can }) => {
+  const [form, setForm] = useState({
+    paymentReceived: false, paymentAmount: '', paymentDate: '',
+    paymentMode: '', transactionReference: '',
+  });
+
+  useEffect(() => {
+    setForm({
+      paymentReceived:      paymentDetails?.paymentReceived ?? false,
+      paymentAmount:        paymentDetails?.paymentAmount ?? '',
+      paymentDate:          paymentDetails?.paymentDate ? new Date(paymentDetails.paymentDate).toISOString().slice(0, 10) : '',
+      paymentMode:          paymentDetails?.paymentMode ?? '',
+      transactionReference: paymentDetails?.transactionReference ?? '',
+    });
+  }, [paymentDetails]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyPayment(applicationId, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('Payment details saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  const canEdit = can('subsidies.update');
+
+  return (
+    <div className="space-y-5 max-w-lg">
+      <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
+        <input type="checkbox" id="paymentReceived" className="h-4 w-4 rounded text-primary-600"
+          checked={form.paymentReceived} disabled={!canEdit}
+          onChange={e => setForm(f => ({ ...f, paymentReceived: e.target.checked }))} />
+        <label htmlFor="paymentReceived" className="text-sm font-medium text-gray-800 cursor-pointer select-none">
+          Payment Received
+        </label>
+        {paymentDetails?.paymentReceived && (
+          <span className="ml-auto text-green-600 font-semibold text-sm">
+            ✅ {paymentDetails.paymentAmount ? `₹${Number(paymentDetails.paymentAmount).toLocaleString('en-IN')}` : 'Received'}
+          </span>
+        )}
+      </div>
+
+      {form.paymentReceived && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-base">Amount (₹){canEdit && <span className="text-danger-500 ml-0.5">*</span>}</label>
+              <input type="number" className="input-base" placeholder="0" disabled={!canEdit}
+                value={form.paymentAmount} onChange={e => setForm(f => ({ ...f, paymentAmount: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Payment Date{canEdit && <span className="text-danger-500 ml-0.5">*</span>}</label>
+              <input type="date" className="input-base" disabled={!canEdit}
+                value={form.paymentDate} onChange={e => setForm(f => ({ ...f, paymentDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Payment Mode</label>
+              <select className="input-base" disabled={!canEdit}
+                value={form.paymentMode} onChange={e => setForm(f => ({ ...f, paymentMode: e.target.value }))}>
+                <option value="">Select mode…</option>
+                <option value="neft">NEFT</option>
+                <option value="rtgs">RTGS</option>
+                <option value="cheque">Cheque</option>
+                <option value="cash">Cash</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-base">Transaction Reference</label>
+              <input className="input-base font-mono" placeholder="TXN / Cheque No." disabled={!canEdit}
+                value={form.transactionReference} onChange={e => setForm(f => ({ ...f, transactionReference: e.target.value }))} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button loading={mutation.isPending} onClick={() => {
+            if (form.paymentReceived && (!form.paymentAmount || !form.paymentDate)) {
+              toast.error('Amount and date are required when payment is received');
+              return;
+            }
+            mutation.mutate(form);
+          }}>Save Payment</Button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── GOC Details Panel ────────────────────────────────────────────────────────
+
+const GocDetailsPanel = ({ applicationId, gocDetails, qc, can }) => {
+  const [form, setForm] = useState({ gocApplicationDate: '', gocStatus: 'not-started' });
+
+  useEffect(() => {
+    setForm({
+      gocApplicationDate: gocDetails?.gocApplicationDate ? new Date(gocDetails.gocApplicationDate).toISOString().slice(0, 10) : '',
+      gocStatus: gocDetails?.gocStatus ?? 'not-started',
+    });
+  }, [gocDetails]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyGocDetails(applicationId, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('GOC details saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  return (
+    <EditablePanel
+      title="GOC Application"
+      subtitle="Government Order Certificate application details"
+      canEdit={can('subsidies.update')}
+      saving={mutation.isPending}
+      onSave={(close) => mutation.mutate(form, { onSuccess: close })}
+      viewContent={
+        <div className="grid grid-cols-2 gap-4">
+          <InfoRow label="GOC Application Date" value={formatDate(gocDetails?.gocApplicationDate)} />
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">GOC Status</span>
+            <Badge color={(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).color}>
+              {(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).label}
+            </Badge>
+          </div>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label-base">GOC Application Date</label>
+          <input type="date" className="input-base"
+            value={form.gocApplicationDate} onChange={e => setForm(f => ({ ...f, gocApplicationDate: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">GOC Status</label>
+          <select className="input-base" value={form.gocStatus} onChange={e => setForm(f => ({ ...f, gocStatus: e.target.value }))}>
+            {Object.entries(GOC_STATUS_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+          </select>
+        </div>
+      </div>
+    </EditablePanel>
+  );
+};
+
+// ─── Filter Bar ───────────────────────────────────────────────────────────────
+
+const SCHEME_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'nhb', label: 'NHB' },
+  { key: 'general', label: 'General' },
+  { key: 'aif', label: 'AIF' },
+];
+
+const FilterBar = ({ filters, onChange, onClear }) => {
+  const [open, setOpen] = useState(false);
+  const hasFilters = Object.values(filters).some(v => v);
+
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(v => !v)}
+        className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors ${
+          hasFilters ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+        }`}>
+        <Filter className="h-4 w-4" />
+        Filters
+        {hasFilters && <span className="ml-1 h-5 w-5 rounded-full bg-primary-600 text-white text-xs flex items-center justify-center">
+          {Object.values(filters).filter(Boolean).length}
+        </span>}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-10 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-4 w-72 space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-sm font-semibold text-gray-800">Advanced Filters</p>
+            <button onClick={() => setOpen(false)}><X className="h-4 w-4 text-gray-400" /></button>
+          </div>
+          {[
+            { key: 'nhbPortalStatus', label: 'NHB Portal Status', options: Object.entries(NHB_PORTAL_META).map(([v, m]) => ({ value: v, label: m.label })) },
+            { key: 'bankVerificationStatus', label: 'Bank Verification', options: Object.entries(VERIFY_META).map(([v, m]) => ({ value: v, label: m.label })) },
+            { key: 'geoTaggingStatus', label: 'Geo-Tagging', options: Object.entries(VERIFY_META).map(([v, m]) => ({ value: v, label: m.label })) },
+            { key: 'paymentReceived', label: 'Payment', options: [{ value: 'true', label: 'Received' }, { value: 'false', label: 'Not Received' }] },
+          ].map(({ key, label, options }) => (
+            <div key={key}>
+              <label className="label-base">{label}</label>
+              <select className="input-base" value={filters[key] || ''} onChange={e => onChange(key, e.target.value)}>
+                <option value="">All</option>
+                {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          ))}
+          {hasFilters && (
+            <button onClick={() => { onClear(); setOpen(false); }}
+              className="w-full text-sm text-danger-600 hover:text-danger-700 font-medium pt-1">
+              Clear All Filters
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 const Subsidies = () => {
   usePageTitle('Subsidies');
   const { can } = useAuth();
   const qc = useQueryClient();
   const configStore = useConfigStore();
 
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [formOpen, setFormOpen] = useState(false);
-  const [detailApp, setDetailApp] = useState(null);
+  const [search, setSearch]           = useState('');
+  const [page, setPage]               = useState(1);
+  const [limit, setLimit]             = useState(10);
+  const [schemeFilter, setSchemeFilter] = useState('all');
+  const [advFilters, setAdvFilters]   = useState({});
+  const [formOpen, setFormOpen]       = useState(false);
+  const [detailApp, setDetailApp]     = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [activeTab, setActiveTab] = useState('goc');
+  const [activeTab, setActiveTab]     = useState('info');
   const [statusModal, setStatusModal] = useState(false);
 
   const debounced = useDebounce(search);
 
-  useState(() => { configStore.fetchConfigurations(); }, []);
+  useEffect(() => { configStore.fetchConfigurations(); }, []);
+
+  const queryParams = {
+    search: debounced, page, limit,
+    ...(schemeFilter !== 'all' ? { schemeType: schemeFilter } : {}),
+    ...Object.fromEntries(Object.entries(advFilters).filter(([, v]) => v)),
+  };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['subsidies', { search: debounced, page, limit }],
-    queryFn: () => getSubsidies({ search: debounced, page, limit }),
+    queryKey: ['subsidies', queryParams],
+    queryFn: () => getSubsidies(queryParams),
     select: (res) => res.data,
   });
 
@@ -169,98 +618,183 @@ const Subsidies = () => {
 
   const statusMutation = useMutation({
     mutationFn: (data) => updateSubsidyStatus(detailApp._id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', detailApp._id] }); toast.success('Status updated'); setStatusModal(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['subsidy', detailApp._id] });
+      qc.invalidateQueries({ queryKey: ['subsidies'] });
+      toast.success('Status updated');
+      setStatusModal(false);
+    },
   });
 
-  const { register: regCreate, handleSubmit: hsCreate, reset: resetCreate } = useForm();
-  const { register: regStatus, handleSubmit: hsStatus, reset: resetStatus } = useForm();
+  const { register: regCreate, handleSubmit: hsCreate, reset: resetCreate, watch: watchCreate } = useForm();
+  const { register: regStatus, handleSubmit: hsStatus } = useForm();
 
   const createMutation = useMutation({
     mutationFn: (data) => createSubsidy(data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('Subsidy application created'); resetCreate(); setFormOpen(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['subsidies'] });
+      toast.success('Subsidy application created');
+      resetCreate();
+      setFormOpen(false);
+    },
     onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
   });
 
+  const watchSchemeType = watchCreate('schemeType');
+
+  const handleAdvFilter = (key, value) => {
+    setAdvFilters(f => ({ ...f, [key]: value }));
+    setPage(1);
+  };
+
+  // ── Detail View ─────────────────────────────────────────────────────────────
   if (detailApp && app) {
     const days = daysAgo(app.applicationDate);
+    const isNhb = app.schemeType === 'nhb';
+
     const tabs = [
-      { id: 'goc', label: 'GOC' },
-      { id: 'info', label: 'Application Info' },
-      { id: 'documents', label: 'Documents' },
-      { id: 'queries', label: `Queries (${app.queries?.length ?? 0})` },
-      { id: 'timeline', label: 'Timeline' },
-      { id: 'status', label: 'Status' },
+      { id: 'info',         label: 'Info' },
+      ...(isNhb ? [{ id: 'nhb', label: 'NHB Details' }] : []),
+      { id: 'goc-details',  label: 'GOC' },
+      { id: 'goc-creds',    label: 'GOC Portal' },
+      { id: 'verification', label: 'Verification' },
+      { id: 'payment',      label: 'Payment' },
+      { id: 'documents',    label: 'Documents' },
+      { id: 'queries',      label: `Queries (${app.queries?.length ?? 0})` },
+      { id: 'timeline',     label: 'Timeline' },
+      { id: 'status',       label: 'Status' },
     ];
 
     return (
       <div className="space-y-5">
+        {/* Header */}
         <div className="flex items-center gap-3">
           <button onClick={() => { setDetailApp(null); setActiveTab('info'); }} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
             <ChevronRight className="h-5 w-5 rotate-180" />
           </button>
           <div className="flex-1">
             <h1 className="text-xl font-bold text-gray-900">{app.applicationId}</h1>
-            <p className="text-sm text-gray-500">{app.clientId?.name ?? 'N/A'} · Subsidy — {app.schemeName}</p>
+            <p className="text-sm text-gray-500">
+              {app.clientId?.name ?? 'N/A'} · <SchemeBadge value={app.schemeType} />
+            </p>
           </div>
           <StatusBadge status={app.currentStatus} />
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* Stats Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { label: 'Subsidy Amount', value: app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—' },
-            { label: 'Project Cost', value: app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—' },
-            { label: 'Days in Process', value: `${days} days` },
-            { label: 'Scheme Type', value: app.schemeType || '—' },
+            { label: 'Subsidy Amount',    value: app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—' },
+            { label: 'Project Cost',      value: app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—' },
+            { label: 'Days in Process',   value: `${days} days` },
+            { label: 'Bank Verification', value: <VerificationBadge value={app.bankVerificationStatus} /> },
+            { label: 'Geo-Tagging',       value: <VerificationBadge value={app.geoTaggingStatus} /> },
           ].map((s) => (
             <div key={s.label} className="card p-3 text-center">
               <p className="text-xs text-gray-400">{s.label}</p>
-              <p className="text-sm font-semibold text-gray-800 mt-1">{s.value}</p>
+              <div className="text-sm font-semibold text-gray-800 mt-1 flex justify-center">{s.value}</div>
             </div>
           ))}
         </div>
 
+        {/* Tabs */}
         <div className="border-b border-gray-200">
           <div className="flex overflow-x-auto">
             {tabs.map((t) => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
-                className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === t.id ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === t.id
+                    ? 'border-primary-600 text-primary-700'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}>
                 {t.label}
               </button>
             ))}
           </div>
         </div>
 
+        {/* Tab Content */}
         <div>
-          {activeTab === 'goc' && (
-            <GocCredentialsPanel
-              applicationId={app._id ?? detailApp._id}
-              credentials={app.gocCredentials}
-              qc={qc}
-              can={can}
-            />
-          )}
-
+          {/* INFO */}
           {activeTab === 'info' && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              {[
-                ['Application ID', app.applicationId], ['Scheme Name', app.schemeName],
-                ['Scheme Type', app.schemeType], ['Department', app.departmentName],
-                ['Subsidy Applied', app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—'],
-                ['Project Cost', app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—'],
-                ['Subsidy %', app.subsidyPercentage ? `${app.subsidyPercentage}%` : '—'],
-                ['Application Date', formatDate(app.applicationDate)],
-                ['Approved Amount', app.approvedAmount ? `₹${Number(app.approvedAmount).toLocaleString('en-IN')}` : '—'],
-                ['Release Date', formatDate(app.releaseDate)],
-                ['Client', app.clientId?.name], ['Client Mobile', app.clientId?.mobile],
-              ].map(([label, value]) => (
-                <div key={label} className="flex flex-col gap-0.5">
-                  <span className="text-xs text-gray-400 font-medium">{label}</span>
-                  <span className="text-gray-800">{value || '—'}</span>
+            <div className="space-y-6">
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Client & File</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <InfoRow label="Client Name"   value={app.clientId?.name} />
+                  <InfoRow label="Mobile"         value={app.clientId?.mobile} />
+                  <InfoRow label="Business"       value={app.clientId?.businessName} />
+                  <InfoRow label="Vendor"         value={app.clientId?.vendorId?.vendorName} />
+                  <InfoRow label="Bank"           value={app.clientId?.bankName} />
+                  <InfoRow label="Branch"         value={app.clientId?.branchName} />
                 </div>
-              ))}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Application Details</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <InfoRow label="Application ID"     value={app.applicationId} />
+                  <InfoRow label="Scheme Name"         value={app.schemeName} />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs text-gray-400 font-medium">Scheme Type</span>
+                    <SchemeBadge value={app.schemeType} />
+                  </div>
+                  <InfoRow label="File Receive Date"  value={formatDate(app.applicationDate)} />
+                  <InfoRow label="Department"          value={app.departmentName} />
+                  <InfoRow label="Subsidy Applied"     value={app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—'} />
+                  <InfoRow label="Project Cost"        value={app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—'} />
+                  <InfoRow label="Subsidy %"           value={app.subsidyPercentage ? `${app.subsidyPercentage}%` : '—'} />
+                  <InfoRow label="Approved Amount"     value={app.approvedAmount ? `₹${Number(app.approvedAmount).toLocaleString('en-IN')}` : '—'} />
+                  <InfoRow label="Release Date"        value={formatDate(app.releaseDate)} />
+                </div>
+              </div>
             </div>
           )}
 
+          {/* NHB DETAILS (conditional) */}
+          {activeTab === 'nhb' && isNhb && (
+            <NhbDetailsPanel
+              applicationId={app._id ?? detailApp._id}
+              nhbDetails={app.nhbDetails}
+              qc={qc} can={can}
+            />
+          )}
+
+          {/* GOC DETAILS */}
+          {activeTab === 'goc-details' && (
+            <GocDetailsPanel
+              applicationId={app._id ?? detailApp._id}
+              gocDetails={app.gocDetails}
+              qc={qc} can={can}
+            />
+          )}
+
+          {/* GOC PORTAL CREDENTIALS */}
+          {activeTab === 'goc-creds' && (
+            <GocCredentialsPanel
+              applicationId={app._id ?? detailApp._id}
+              credentials={app.gocCredentials}
+              qc={qc} can={can}
+            />
+          )}
+
+          {/* VERIFICATION */}
+          {activeTab === 'verification' && (
+            <VerificationPanel
+              applicationId={app._id ?? detailApp._id}
+              app={app} qc={qc} can={can}
+            />
+          )}
+
+          {/* PAYMENT */}
+          {activeTab === 'payment' && (
+            <PaymentPanel
+              applicationId={app._id ?? detailApp._id}
+              paymentDetails={app.paymentDetails}
+              qc={qc} can={can}
+            />
+          )}
+
+          {/* DOCUMENTS */}
           {activeTab === 'documents' && (
             <div className="space-y-2">
               {(app.documentChecklist ?? []).length === 0 && (
@@ -269,14 +803,13 @@ const Subsidies = () => {
               {(app.documentChecklist ?? []).map((doc) => (
                 <div key={doc._id} className="border border-gray-100 rounded-xl p-4 flex items-center justify-between">
                   <p className="text-sm font-medium text-gray-800">{doc.documentName}</p>
-                  <Badge color={{ pending: 'gray', 'received-from-client': 'yellow', 'verified-by-bank': 'green' }[doc.status] || 'blue'}>
-                    {doc.status}
-                  </Badge>
+                  <Badge color={{ pending: 'gray', received: 'green' }[doc.status] || 'gray'}>{doc.status}</Badge>
                 </div>
               ))}
             </div>
           )}
 
+          {/* QUERIES */}
           {activeTab === 'queries' && (
             <div className="space-y-3">
               {(app.queries ?? []).map((q) => (
@@ -292,13 +825,14 @@ const Subsidies = () => {
             </div>
           )}
 
+          {/* TIMELINE */}
           {activeTab === 'timeline' && (
             <div className="space-y-3 relative">
               <div className="absolute left-5 top-0 bottom-0 w-px bg-gray-200" />
               {(app.timeline ?? []).map((entry, i) => (
                 <div key={i} className="flex gap-4 relative">
                   <div className="relative z-10 shrink-0 h-10 w-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center text-base">
-                    {{ 'status-change': '🔄', 'document-update': '📄', query: '❓', note: '📝' }[entry.activityType] || '📌'}
+                    {{ 'status-change': '🔄', 'document-update': '📄', query: '❓', note: '📝', 'portal-update': '🌐', 'verification-update': '✅', 'payment-update': '💰', assignment: '👤' }[entry.activityType] || '📌'}
                   </div>
                   <div className="flex-1 bg-gray-50 rounded-xl p-3">
                     <p className="text-sm font-medium text-gray-800">{entry.activity}</p>
@@ -310,6 +844,7 @@ const Subsidies = () => {
             </div>
           )}
 
+          {/* STATUS */}
           {activeTab === 'status' && (
             <Card header="Change Status">
               <div className="flex items-center justify-between">
@@ -331,8 +866,8 @@ const Subsidies = () => {
             <div>
               <label className="label-base">New Status<span className="text-danger-500 ml-0.5">*</span></label>
               <select className="input-base" {...regStatus('status', { required: true })}>
-                <option value="">Select...</option>
-                {configStore.subsidyStatuses.map((s) => <option key={s._id} value={s.label}>{s.label}</option>)}
+                <option value="">Select…</option>
+                {configStore.subsidyStatuses.map(s => <option key={s._id} value={s.label}>{s.label}</option>)}
               </select>
             </div>
             <div>
@@ -349,20 +884,45 @@ const Subsidies = () => {
     );
   }
 
+  // ── Table View ──────────────────────────────────────────────────────────────
+  const isNhbActive = schemeFilter === 'nhb';
+
   const columns = [
-    { key: 'applicationId', label: 'Application ID', width: '140px' },
-    { key: 'client', label: 'Client', render: (row) => row.clientId?.name ?? '—' },
-    { key: 'schemeName', label: 'Scheme' },
-    { key: 'subsidyAmountApplied', label: 'Amount', render: (row) => row.subsidyAmountApplied ? `₹${Number(row.subsidyAmountApplied).toLocaleString('en-IN')}` : '—' },
-    { key: 'currentStatus', label: 'Status', render: (row) => <StatusBadge status={row.currentStatus} /> },
-    { key: 'applicationDate', label: 'Date', render: (row) => formatDate(row.applicationDate) },
+    { key: 'applicationId', label: 'App ID', width: '130px' },
+    { key: 'client',        label: 'Client',  render: (row) => row.clientId?.name ?? '—' },
+    { key: 'appDate',       label: 'File Date', render: (row) => formatDate(row.applicationDate) },
+    { key: 'vendor',        label: 'Vendor',  render: (row) => row.clientId?.vendorId?.vendorName ?? <span className="text-gray-300">Direct</span> },
+    { key: 'bank',          label: 'Bank',    render: (row) => row.clientId?.bankName ?? '—' },
+    { key: 'branch',        label: 'Branch',  render: (row) => row.clientId?.branchName ?? '—' },
+    { key: 'scheme',        label: 'Scheme',  render: (row) => <SchemeBadge value={row.schemeType} /> },
+    { key: 'status',        label: 'Status',  render: (row) => <StatusBadge status={row.currentStatus} /> },
+    ...(isNhbActive ? [
+      { key: 'nhbId',       label: 'NHB ID',  render: (row) => <span className="font-mono text-xs">{row.nhbDetails?.nhbId || '—'}</span> },
+      { key: 'nhbStatus',   label: 'NHB Portal', render: (row) => <NHBStatusBadge value={row.nhbDetails?.nhbPortalStatus} /> },
+    ] : []),
+    { key: 'bankVerif',     label: 'Bank Verif.', render: (row) => <VerificationBadge value={row.bankVerificationStatus} /> },
+    { key: 'geoTag',        label: 'Geo-Tag',     render: (row) => <VerificationBadge value={row.geoTaggingStatus} /> },
+    {
+      key: 'payment',       label: 'Payment',
+      render: (row) => row.paymentDetails?.paymentReceived
+        ? <span className="text-green-600 font-medium text-xs">✅ {row.paymentDetails.paymentAmount ? `₹${Number(row.paymentDetails.paymentAmount).toLocaleString('en-IN')}` : 'Rcvd'}</span>
+        : <span className="text-gray-300 text-sm">❌</span>,
+    },
     { key: 'days', label: 'Days', render: (row) => `${daysAgo(row.applicationDate)}d` },
     {
       key: 'actions', label: '', sortable: false, tdClassName: 'text-right',
       render: (row) => (
         <div className="flex items-center gap-1 justify-end">
-          <button onClick={() => setDetailApp(row)} className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Eye className="h-4 w-4" /></button>
-          {can('subsidies.delete') && <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"><Trash2 className="h-4 w-4" /></button>}
+          <button onClick={() => { setDetailApp(row); setActiveTab('info'); }}
+            className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
+            <Eye className="h-4 w-4" />
+          </button>
+          {can('subsidies.delete') && (
+            <button onClick={() => setDeleteTarget(row)}
+              className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -370,38 +930,73 @@ const Subsidies = () => {
 
   return (
     <div>
+      {/* Page Header */}
       <div className="page-header">
         <h1 className="page-title">Subsidy Applications</h1>
         {can('subsidies.create') && <Button icon={Plus} onClick={() => setFormOpen(true)}>New Application</Button>}
       </div>
 
-      <div className="card p-4 mb-4">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input className="input-base pl-9" placeholder="Search subsidies..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
-        </div>
+      {/* Scheme Tabs */}
+      <div className="flex items-center gap-1 mb-4 border-b border-gray-200">
+        {SCHEME_TABS.map(tab => (
+          <button key={tab.key} onClick={() => { setSchemeFilter(tab.key); setPage(1); }}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              schemeFilter === tab.key
+                ? 'border-primary-600 text-primary-700'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <Table columns={columns} data={data?.data ?? []} loading={isLoading}
+      {/* Search + Filters */}
+      <div className="card p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-0 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input className="input-base pl-9" placeholder="Search by app ID, scheme, department…"
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+        </div>
+        <FilterBar
+          filters={advFilters}
+          onChange={handleAdvFilter}
+          onClear={() => { setAdvFilters({}); setPage(1); }}
+        />
+      </div>
+
+      {/* Table */}
+      <Table
+        columns={columns} data={data?.data ?? []} loading={isLoading}
         pagination={data?.pagination} onPageChange={setPage}
         onPageSizeChange={(s) => { setLimit(s); setPage(1); }}
-        emptyTitle="No subsidy applications" emptyDescription="Create a new subsidy application."
+        emptyTitle="No subsidy applications"
+        emptyDescription="Create a new subsidy application to get started."
         emptyAction={can('subsidies.create') ? () => setFormOpen(true) : undefined}
         emptyActionLabel="New Application"
       />
 
+      {/* Create Modal */}
       <Modal isOpen={formOpen} onClose={() => setFormOpen(false)} title="New Subsidy Application" size="lg">
-        <form onSubmit={hsCreate((d) => createMutation.mutate(d))} className="space-y-4">
+        <form onSubmit={hsCreate(d => createMutation.mutate(d))} className="space-y-5">
           <div>
             <label className="label-base">Client<span className="text-danger-500 ml-0.5">*</span></label>
             <select className="input-base" {...regCreate('clientId', { required: true })}>
-              <option value="">Select client...</option>
-              {(clientsData ?? []).map((c) => <option key={c._id} value={c._id}>{c.name} — {c.clientId}</option>)}
+              <option value="">Select client…</option>
+              {(clientsData ?? []).map(c => <option key={c._id} value={c._id}>{c.name} — {c.clientId}</option>)}
             </select>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Input label="Scheme Name" required {...regCreate('schemeName', { required: true })} />
-            <Input label="Scheme Type" {...regCreate('schemeType')} />
+            <div>
+              <label className="label-base">Scheme Type</label>
+              <select className="input-base" {...regCreate('schemeType')}>
+                <option value="none">None</option>
+                <option value="nhb">NHB</option>
+                <option value="general">General</option>
+                <option value="aif">AIF</option>
+              </select>
+            </div>
             <Input label="Department Name" {...regCreate('departmentName')} />
             <div>
               <label className="label-base">Subsidy Amount Applied (₹)</label>
@@ -415,14 +1010,41 @@ const Subsidies = () => {
               <label className="label-base">Subsidy %</label>
               <input type="number" className="input-base" {...regCreate('subsidyPercentage')} />
             </div>
-            <Input label="Application Date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} {...regCreate('applicationDate')} />
+            <Input label="File Receive Date" type="date"
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              {...regCreate('applicationDate')} />
             <div>
               <label className="label-base">Priority</label>
               <select className="input-base" {...regCreate('priority')}>
-                {PRIORITIES.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
               </select>
             </div>
           </div>
+
+          {/* NHB-specific fields (conditional) */}
+          {watchSchemeType === 'nhb' && (
+            <div className="rounded-xl border border-green-100 bg-green-50 p-4 space-y-4">
+              <p className="text-sm font-semibold text-green-800">NHB Portal Details</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label-base">NHB ID</label>
+                  <input className="input-base font-mono" placeholder="NHB portal user ID"
+                    {...regCreate('nhbDetails.nhbId')} />
+                </div>
+                <div>
+                  <label className="label-base">NHB Password</label>
+                  <input type="password" className="input-base"
+                    {...regCreate('nhbDetails.nhbPassword')} />
+                </div>
+                <div className="col-span-2">
+                  <label className="label-base">NHB Project Code</label>
+                  <input className="input-base font-mono" placeholder="e.g. NHB-2026-1234"
+                    {...regCreate('nhbDetails.nhbProjectCode')} />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setFormOpen(false)} type="button">Cancel</Button>
             <Button type="submit" loading={createMutation.isPending}>Create Application</Button>
@@ -430,9 +1052,12 @@ const Subsidies = () => {
         </form>
       </Modal>
 
-      <ConfirmDialog isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)}
+      {/* Delete Confirm */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)}
         onConfirm={() => deleteMutation.mutate(deleteTarget._id)} loading={deleteMutation.isPending}
-        title="Delete Application" message={`Delete "${deleteTarget?.applicationId}"?`} />
+        title="Delete Application" message={`Delete "${deleteTarget?.applicationId}"?`}
+      />
     </div>
   );
 };
