@@ -796,17 +796,12 @@ const Subsidies = () => {
 
           {/* DOCUMENTS */}
           {activeTab === 'documents' && (
-            <div className="space-y-2">
-              {(app.documentChecklist ?? []).length === 0 && (
-                <p className="text-center text-gray-400 py-8 text-sm">No documents configured.</p>
-              )}
-              {(app.documentChecklist ?? []).map((doc) => (
-                <div key={doc._id} className="border border-gray-100 rounded-xl p-4 flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-800">{doc.documentName}</p>
-                  <Badge color={{ pending: 'gray', received: 'green' }[doc.status] || 'gray'}>{doc.status}</Badge>
-                </div>
-              ))}
-            </div>
+            <DocumentsTab
+              applicationId={app._id ?? detailApp._id}
+              docs={app.documentChecklist ?? []}
+              qc={qc}
+              can={can}
+            />
           )}
 
           {/* QUERIES */}
