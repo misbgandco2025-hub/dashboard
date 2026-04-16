@@ -91,6 +91,7 @@ const statusWiseReport = async (req, res, next) => {
     const { type } = req.query;
     const Model = type === 'subsidy' ? SubsidyApplication : BankLoanApplication;
 
+    // Aggregate counts + avg days
     const statusGroups = await Model.aggregate([
       { $match: { isDeleted: false } },
       {
@@ -98,22 +99,105 @@ const statusWiseReport = async (req, res, next) => {
           _id: '$currentStatus',
           count: { $sum: 1 },
           avgDaysInProcess: {
-            $avg: {
-              $divide: [{ $subtract: ['$$NOW', '$applicationDate'] }, 1000 * 60 * 60 * 24],
-            },
+            $avg: { $divide: [{ $subtract: ['$$NOW', '$applicationDate'] }, 86400000] },
           },
-          applications: { $push: { applicationId: '$applicationId', applicationDate: '$applicationDate', clientId: '$clientId' } },
+          ids: { $push: '$_id' },
         },
       },
       { $sort: { count: -1 } },
     ]);
 
-    return ApiResponse.success(res, 'Status-wise report retrieved', statusGroups.map((g) => ({
-      status: g._id,
-      count: g.count,
-      avgDaysInProcess: Math.round(g.avgDaysInProcess || 0),
-      applications: g.applications.slice(0, 20),
-    })));
+    // For each group, fetch full application list with client populated
+    const result = await Promise.all(
+      statusGroups.map(async (g) => {
+        const apps = await Model.find({ _id: { $in: g.ids }, isDeleted: false })
+          .populate({
+            path: 'clientId',
+            select: 'name clientId mobile bankName branchName vendorId',
+            populate: { path: 'vendorId', select: 'vendorName' },
+          })
+          .select('applicationId applicationDate priority schemeType nhbDetails paymentDetails bankVerificationStatus geoTaggingStatus')
+          .lean();
+        return {
+          status: g._id,
+          count: g.count,
+          avgDaysInProcess: Math.round(g.avgDaysInProcess || 0),
+          applications: apps,
+        };
+      })
+    );
+
+    return ApiResponse.success(res, 'Status-wise report retrieved', result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/reports/subsidy-analytics  — NHB/subsidy-specific breakdown
+const subsidyAnalytics = async (req, res, next) => {
+  try {
+    const base = { isDeleted: false };
+
+    const [schemeBreakdown, nhbPortalBreakdown, bankVerifBreakdown, geoTagBreakdown, paymentStats, totalSubsidies] =
+      await Promise.all([
+        // Scheme type distribution
+        SubsidyApplication.aggregate([
+          { $match: base },
+          { $group: { _id: '$schemeType', count: { $sum: 1 } } },
+        ]),
+        // NHB portal status (only NHB records)
+        SubsidyApplication.aggregate([
+          { $match: { ...base, schemeType: 'nhb' } },
+          { $group: { _id: '$nhbDetails.nhbPortalStatus', count: { $sum: 1 }, ids: { $push: '$_id' } } },
+        ]),
+        // Bank verification status
+        SubsidyApplication.aggregate([
+          { $match: base },
+          { $group: { _id: '$bankVerificationStatus', count: { $sum: 1 } } },
+        ]),
+        // Geo-tagging status
+        SubsidyApplication.aggregate([
+          { $match: base },
+          { $group: { _id: '$geoTaggingStatus', count: { $sum: 1 } } },
+        ]),
+        // Payment stats
+        SubsidyApplication.aggregate([
+          { $match: base },
+          {
+            $group: {
+              _id: null,
+              paymentReceived: { $sum: { $cond: ['$paymentDetails.paymentReceived', 1, 0] } },
+              paymentPending:  { $sum: { $cond: ['$paymentDetails.paymentReceived', 0, 1] } },
+              totalAmountReceived: { $sum: { $ifNull: ['$paymentDetails.paymentAmount', 0] } },
+            },
+          },
+        ]),
+        SubsidyApplication.countDocuments(base),
+      ]);
+
+    // For each NHB portal group, fetch the full application list
+    const nhbPortalWithApps = await Promise.all(
+      nhbPortalBreakdown.map(async (g) => {
+        const apps = await SubsidyApplication.find({ _id: { $in: g.ids }, isDeleted: false })
+          .populate({
+            path: 'clientId',
+            select: 'name clientId mobile bankName branchName vendorId',
+            populate: { path: 'vendorId', select: 'vendorName' },
+          })
+          .select('applicationId applicationDate currentStatus nhbDetails bankVerificationStatus geoTaggingStatus paymentDetails')
+          .lean();
+        return { status: g._id || 'goc-new', count: g.count, applications: apps };
+      })
+    );
+
+    return ApiResponse.success(res, 'Subsidy analytics retrieved', {
+      totalSubsidies,
+      schemeBreakdown: schemeBreakdown.map(g => ({ type: g._id || 'none', count: g.count })),
+      nhbPortalStatus: nhbPortalWithApps,
+      bankVerification: bankVerifBreakdown.map(g => ({ status: g._id || 'not-started', count: g.count })),
+      geoTagging:       geoTagBreakdown.map(g => ({ status: g._id || 'not-started', count: g.count })),
+      payment: paymentStats[0] ?? { paymentReceived: 0, paymentPending: 0, totalAmountReceived: 0 },
+    });
   } catch (err) {
     next(err);
   }
@@ -210,4 +294,4 @@ const auditLogReport = async (req, res, next) => {
   }
 };
 
-module.exports = { clientWiseReport, vendorWiseReport, statusWiseReport, dateRangeReport, performanceReport, auditLogReport };
+module.exports = { clientWiseReport, vendorWiseReport, statusWiseReport, dateRangeReport, performanceReport, auditLogReport, subsidyAnalytics };
