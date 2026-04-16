@@ -2,50 +2,76 @@ const SubsidyApplication = require('../models/SubsidyApplication');
 const Client = require('../models/Client');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { getPaginationOptions, buildPaginationMeta, generateQueryNumber } = require('../utils/helpers');
+const { encryptText, getPaginationOptions, buildPaginationMeta, generateQueryNumber } = require('../utils/helpers');
 const { notifyAssignment, notifyStatusChange, notifyQueryRaised, notifyDocumentUpdate } = require('../utils/notificationHelper');
 
+// ── Deep-populate: Client → Vendor ───────────────────────────────────────────
 const populateOptions = [
-  { path: 'clientId', select: 'clientId name email mobile businessName' },
-  { path: 'assignedTo', select: 'fullName username' },
-  { path: 'createdBy', select: 'fullName username' },
+  {
+    path: 'clientId',
+    select: 'clientId name email mobile businessName bankName branchName vendorId sourceType',
+    populate: { path: 'vendorId', select: 'vendorName vendorCode' },
+  },
+  { path: 'assignedTo',  select: 'fullName username' },
+  { path: 'createdBy',   select: 'fullName username' },
   { path: 'documentChecklist.documentType', select: 'name required' },
-  { path: 'queries.assignedTo', select: 'fullName username' },
-  { path: 'timeline.performedBy', select: 'fullName username' },
+  { path: 'queries.assignedTo',             select: 'fullName username' },
+  { path: 'timeline.performedBy',           select: 'fullName username' },
 ];
 
-// GET /api/subsidies
+// Lightweight populate for list queries (avoids heavy sub-doc population on lists)
+const listPopulateOptions = [
+  {
+    path: 'clientId',
+    select: 'clientId name mobile bankName branchName vendorId',
+    populate: { path: 'vendorId', select: 'vendorName' },
+  },
+  { path: 'assignedTo', select: 'fullName username' },
+];
+
+// ── GET /api/subsidies ────────────────────────────────────────────────────────
 const getApplications = async (req, res, next) => {
   try {
     const { page, limit, skip } = getPaginationOptions(req.query);
     const filter = { isDeleted: false };
 
+    // Text search
     if (req.query.search) {
       filter.$or = [
         { applicationId: { $regex: req.query.search, $options: 'i' } },
-        { schemeName: { $regex: req.query.search, $options: 'i' } },
-        { departmentName: { $regex: req.query.search, $options: 'i' } },
+        { schemeName:    { $regex: req.query.search, $options: 'i' } },
+        { departmentName:{ $regex: req.query.search, $options: 'i' } },
       ];
     }
+
+    // Existing filters
     if (req.query.currentStatus) filter.currentStatus = req.query.currentStatus;
-    if (req.query.priority) filter.priority = req.query.priority;
-    if (req.query.clientId) filter.clientId = req.query.clientId;
-    if (req.query.assignedTo) filter.assignedTo = req.query.assignedTo;
+    if (req.query.priority)      filter.priority = req.query.priority;
+    if (req.query.clientId)      filter.clientId = req.query.clientId;
+    if (req.query.assignedTo)    filter.assignedTo = req.query.assignedTo;
     if (req.query.from || req.query.to) {
       filter.applicationDate = {};
       if (req.query.from) filter.applicationDate.$gte = new Date(req.query.from);
-      if (req.query.to) filter.applicationDate.$lte = new Date(req.query.to);
+      if (req.query.to)   filter.applicationDate.$lte = new Date(req.query.to);
     }
 
-    // DATA ENTRY: see assigned applications AND their own created ones
+    // ── New filters ───────────────────────────────────────────────────────────
+    if (req.query.schemeType)             filter.schemeType = req.query.schemeType;
+    if (req.query.nhbPortalStatus)        filter['nhbDetails.nhbPortalStatus'] = req.query.nhbPortalStatus;
+    if (req.query.bankVerificationStatus) filter.bankVerificationStatus = req.query.bankVerificationStatus;
+    if (req.query.geoTaggingStatus)       filter.geoTaggingStatus = req.query.geoTaggingStatus;
+    if (req.query.paymentReceived !== undefined && req.query.paymentReceived !== '') {
+      filter['paymentDetails.paymentReceived'] = req.query.paymentReceived === 'true';
+    }
+
+    // DATA ENTRY: see only assigned or self-created
     if (req.user.role === 'data-entry') {
       filter.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
     }
 
     const [apps, total] = await Promise.all([
       SubsidyApplication.find(filter)
-        .populate('clientId', 'clientId name mobile')
-        .populate('assignedTo', 'fullName username')
+        .populate(listPopulateOptions)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
@@ -58,7 +84,7 @@ const getApplications = async (req, res, next) => {
   }
 };
 
-// POST /api/subsidies
+// ── POST /api/subsidies ───────────────────────────────────────────────────────
 const createApplication = async (req, res, next) => {
   try {
     const FieldConfiguration = require('../models/FieldConfiguration');
@@ -70,12 +96,21 @@ const createApplication = async (req, res, next) => {
       documentType: f._id,
       documentName: f.name,
       isRequired: f.required,
-      status: 'pending'
+      status: 'pending',
     }));
 
-    // Auto-assign to creator if data-entry user
-    const assignedTo = req.body.assignedTo || (req.user.role === 'data-entry' ? req.user._id : undefined);
-    const app = await SubsidyApplication.create({ ...req.body, documentChecklist, assignedTo, createdBy: req.user._id });
+    // Handle NHB password encryption at creation time
+    const body = { ...req.body };
+    if (body.nhbDetails?.nhbPassword) {
+      body.nhbDetails = {
+        ...body.nhbDetails,
+        _nhbPasswordEncrypted: encryptText(body.nhbDetails.nhbPassword),
+      };
+      delete body.nhbDetails.nhbPassword;
+    }
+
+    const assignedTo = body.assignedTo || (req.user.role === 'data-entry' ? req.user._id : undefined);
+    const app = await SubsidyApplication.create({ ...body, documentChecklist, assignedTo, createdBy: req.user._id });
     await app.populate(populateOptions);
 
     app.timeline.push({
@@ -94,11 +129,10 @@ const createApplication = async (req, res, next) => {
   }
 };
 
-// GET /api/subsidies/:id
+// ── GET /api/subsidies/:id ────────────────────────────────────────────────────
 const getApplicationById = async (req, res, next) => {
   try {
     const filter = { _id: req.params.id, isDeleted: false };
-
     const app = await SubsidyApplication.findOne(filter).populate(populateOptions);
     if (!app) return next(ApiError.notFound('Application not found.'));
     return ApiResponse.success(res, 'Application retrieved', app);
@@ -107,7 +141,7 @@ const getApplicationById = async (req, res, next) => {
   }
 };
 
-// PUT /api/subsidies/:id
+// ── PUT /api/subsidies/:id ───────────────────────────────────────────────────
 const updateApplication = async (req, res, next) => {
   try {
     const filter = { _id: req.params.id, isDeleted: false };
@@ -116,10 +150,92 @@ const updateApplication = async (req, res, next) => {
     const app = await SubsidyApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
-    const allowed = ['schemeName', 'schemeType', 'departmentName', 'subsidyAmountApplied', 'eligibleAmount',
+    // ── Scalar / flat fields ──────────────────────────────────────────────────
+    const allowedFlat = [
+      'schemeName', 'schemeType', 'departmentName', 'subsidyAmountApplied', 'eligibleAmount',
       'approvedAmount', 'subsidyPercentage', 'projectCost', 'submissionDate', 'approvalDate',
-      'releaseDate', 'receivedDate', 'utrNumber', 'currentStage', 'priority'];
-    allowed.forEach((f) => { if (req.body[f] !== undefined) app[f] = req.body[f]; });
+      'releaseDate', 'receivedDate', 'utrNumber', 'currentStage', 'priority',
+      'bankVerificationStatus', 'bankVerificationDate', 'geoTaggingStatus', 'geoTaggingDate',
+    ];
+    allowedFlat.forEach(f => { if (req.body[f] !== undefined) app[f] = req.body[f]; });
+
+    // ── Auto-set verification dates on status → 'completed' ──────────────────
+    if (req.body.bankVerificationStatus === 'completed' && !app.bankVerificationDate) {
+      app.bankVerificationDate = new Date();
+    }
+    if (req.body.geoTaggingStatus === 'completed' && !app.geoTaggingDate) {
+      app.geoTaggingDate = new Date();
+    }
+
+    // ── nhbDetails: merge + encrypt password ──────────────────────────────────
+    if (req.body.nhbDetails) {
+      const nd = req.body.nhbDetails;
+      if (!app.nhbDetails) app.nhbDetails = {};
+      if (nd.nhbId          !== undefined) app.nhbDetails.nhbId         = nd.nhbId;
+      if (nd.nhbProjectCode !== undefined) app.nhbDetails.nhbProjectCode = nd.nhbProjectCode;
+      if (nd.nhbPortalStatus !== undefined) {
+        const prevNhbStatus = app.nhbDetails.nhbPortalStatus;
+        app.nhbDetails.nhbPortalStatus = nd.nhbPortalStatus;
+        if (prevNhbStatus !== nd.nhbPortalStatus) {
+          app.timeline.push({
+            activity: `NHB Portal Status changed to "${nd.nhbPortalStatus}"`,
+            activityType: 'portal-update',
+            performedBy: req.user._id,
+            previousStatus: prevNhbStatus,
+            newStatus: nd.nhbPortalStatus,
+            isSystemGenerated: true,
+          });
+        }
+      }
+      if (nd.nhbPassword) {
+        app.nhbDetails._nhbPasswordEncrypted = encryptText(nd.nhbPassword);
+      }
+      app.markModified('nhbDetails');
+    }
+
+    // ── gocDetails: shallow merge ─────────────────────────────────────────────
+    if (req.body.gocDetails) {
+      if (!app.gocDetails) app.gocDetails = {};
+      Object.assign(app.gocDetails, req.body.gocDetails);
+      app.markModified('gocDetails');
+    }
+
+    // ── paymentDetails: shallow merge + auto timeline ─────────────────────────
+    if (req.body.paymentDetails) {
+      const pd = req.body.paymentDetails;
+      const wasReceived = app.paymentDetails?.paymentReceived;
+      if (!app.paymentDetails) app.paymentDetails = {};
+      Object.assign(app.paymentDetails, pd);
+      app.markModified('paymentDetails');
+
+      if (!wasReceived && pd.paymentReceived === true) {
+        const amt = pd.paymentAmount ?? app.paymentDetails.paymentAmount;
+        app.timeline.push({
+          activity: amt ? `Payment received: ₹${Number(amt).toLocaleString('en-IN')}` : 'Payment marked as received',
+          activityType: 'payment-update',
+          performedBy: req.user._id,
+          isSystemGenerated: true,
+        });
+      }
+    }
+
+    // ── Auto timeline for verification status changes ─────────────────────────
+    if (req.body.bankVerificationStatus && req.body.bankVerificationStatus !== app.bankVerificationStatus) {
+      app.timeline.push({
+        activity: `Bank verification marked as "${req.body.bankVerificationStatus}"`,
+        activityType: 'verification-update',
+        performedBy: req.user._id,
+        isSystemGenerated: true,
+      });
+    }
+    if (req.body.geoTaggingStatus && req.body.geoTaggingStatus !== app.geoTaggingStatus) {
+      app.timeline.push({
+        activity: `Geo-tagging marked as "${req.body.geoTaggingStatus}"`,
+        activityType: 'verification-update',
+        performedBy: req.user._id,
+        isSystemGenerated: true,
+      });
+    }
 
     await app.save();
     await app.populate(populateOptions);
@@ -129,7 +245,7 @@ const updateApplication = async (req, res, next) => {
   }
 };
 
-// DELETE /api/subsidies/:id
+// ── DELETE /api/subsidies/:id ─────────────────────────────────────────────────
 const deleteApplication = async (req, res, next) => {
   try {
     const app = await SubsidyApplication.findOneAndUpdate(
@@ -144,7 +260,7 @@ const deleteApplication = async (req, res, next) => {
   }
 };
 
-// PUT /api/subsidies/:id/status
+// ── PUT /api/subsidies/:id/status ─────────────────────────────────────────────
 const updateStatus = async (req, res, next) => {
   try {
     const { status, remarks } = req.body;
@@ -178,7 +294,7 @@ const updateStatus = async (req, res, next) => {
   }
 };
 
-// PUT /api/subsidies/:id/documents
+// ── PUT /api/subsidies/:id/documents ─────────────────────────────────────────
 const updateDocumentChecklist = async (req, res, next) => {
   try {
     const { documentId, status, remarks, requestedDate, receivedDate, submittedDate, verifiedDate, verifiedBy } = req.body;
@@ -190,16 +306,16 @@ const updateDocumentChecklist = async (req, res, next) => {
     if (!doc) return next(ApiError.notFound('Document not found in checklist.'));
 
     const prev = doc.status;
-    if (status) doc.status = status;
-    if (remarks) doc.remarks = remarks;
+    if (status)        doc.status = status;
+    if (remarks)       doc.remarks = remarks;
     if (requestedDate) doc.requestedDate = requestedDate;
-    if (receivedDate) doc.receivedDate = receivedDate;
+    if (receivedDate)  doc.receivedDate = receivedDate;
     if (submittedDate) doc.submittedDate = submittedDate;
-    if (verifiedDate) doc.verifiedDate = verifiedDate;
-    if (verifiedBy) doc.verifiedBy = verifiedBy;
+    if (verifiedDate)  doc.verifiedDate = verifiedDate;
+    if (verifiedBy)    doc.verifiedBy = verifiedBy;
 
     app.timeline.push({
-      activity: `Document updated to "${status}"`,
+      activity: `Document "${doc.documentName}" updated to "${status}"`,
       activityType: 'document-update',
       performedBy: req.user._id,
       previousStatus: prev,
@@ -216,7 +332,7 @@ const updateDocumentChecklist = async (req, res, next) => {
   }
 };
 
-// POST /api/subsidies/:id/queries
+// ── POST /api/subsidies/:id/queries ──────────────────────────────────────────
 const addQuery = async (req, res, next) => {
   try {
     const app = await SubsidyApplication.findOne({ _id: req.params.id, isDeleted: false });
@@ -241,7 +357,7 @@ const addQuery = async (req, res, next) => {
   }
 };
 
-// PUT /api/subsidies/:id/queries/:queryId
+// ── PUT /api/subsidies/:id/queries/:queryId ──────────────────────────────────
 const updateQuery = async (req, res, next) => {
   try {
     const app = await SubsidyApplication.findOne({ _id: req.params.id, isDeleted: false });
@@ -250,7 +366,7 @@ const updateQuery = async (req, res, next) => {
     const q = app.queries.id(req.params.queryId);
     if (!q) return next(ApiError.notFound('Query not found.'));
 
-    ['status', 'resolutionRemarks', 'responseSubmittedDate', 'resolutionDate', 'assignedTo'].forEach((f) => {
+    ['status', 'resolutionRemarks', 'responseSubmittedDate', 'resolutionDate', 'assignedTo'].forEach(f => {
       if (req.body[f] !== undefined) q[f] = req.body[f];
     });
     if (req.body.status === 'closed') q.closedBy = req.user._id;
@@ -269,7 +385,7 @@ const updateQuery = async (req, res, next) => {
   }
 };
 
-// POST /api/subsidies/:id/timeline
+// ── POST /api/subsidies/:id/timeline ─────────────────────────────────────────
 const addTimelineEntry = async (req, res, next) => {
   try {
     const { activity, remarks } = req.body;
@@ -287,7 +403,7 @@ const addTimelineEntry = async (req, res, next) => {
   }
 };
 
-// GET /api/subsidies/:id/timeline
+// ── GET /api/subsidies/:id/timeline ──────────────────────────────────────────
 const getTimeline = async (req, res, next) => {
   try {
     const app = await SubsidyApplication.findOne({ _id: req.params.id, isDeleted: false })
@@ -300,7 +416,7 @@ const getTimeline = async (req, res, next) => {
   }
 };
 
-// PUT /api/subsidies/:id/assign
+// ── PUT /api/subsidies/:id/assign ─────────────────────────────────────────────
 const assignApplication = async (req, res, next) => {
   try {
     const { assignedTo } = req.body;
@@ -326,7 +442,7 @@ const assignApplication = async (req, res, next) => {
   }
 };
 
-// PUT /api/subsidies/:id/goc-credentials
+// ── PUT /api/subsidies/:id/goc-credentials ───────────────────────────────────
 const updateGocCredentials = async (req, res, next) => {
   try {
     const { email, mobile, password } = req.body;
@@ -334,18 +450,15 @@ const updateGocCredentials = async (req, res, next) => {
     if (!app) return next(ApiError.notFound('Application not found.'));
 
     if (!app.gocCredentials) app.gocCredentials = {};
-    if (email !== undefined) app.gocCredentials.email = email;
-    if (mobile !== undefined) app.gocCredentials.mobile = mobile;
-    if (password) {
-      const { encryptText } = require('../utils/helpers');
-      app.gocCredentials._passwordEncrypted = encryptText(password);
-    }
+    if (email    !== undefined) app.gocCredentials.email  = email;
+    if (mobile   !== undefined) app.gocCredentials.mobile = mobile;
+    if (password) app.gocCredentials._passwordEncrypted = encryptText(password);
 
     app.markModified('gocCredentials');
     await app.save();
     return ApiResponse.success(res, 'GOC credentials saved', {
-      email: app.gocCredentials.email,
-      mobile: app.gocCredentials.mobile,
+      email:       app.gocCredentials.email,
+      mobile:      app.gocCredentials.mobile,
       hasPassword: !!app.gocCredentials._passwordEncrypted,
     });
   } catch (err) {
