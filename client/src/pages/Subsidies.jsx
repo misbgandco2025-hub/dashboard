@@ -559,7 +559,167 @@ const FilterBar = ({ filters, onChange, onClear }) => {
   );
 };
 
+// ─── Documents Tab Component ─────────────────────────────────────────────────
+
+const DOC_STATUS_OPTIONS = ['pending', 'received'];
+
+const DocumentRow = ({ doc, applicationId, qc, canEdit }) => {
+  const [expanded, setExpanded]   = useState(false);
+  const [status, setStatus]       = useState(doc.status);
+  const [remarks, setRemarks]     = useState(doc.remarks || '');
+  const [receivedDate, setReceivedDate] = useState(
+    doc.receivedDate ? new Date(doc.receivedDate).toISOString().slice(0, 10) : ''
+  );
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyDocumentChecklist(applicationId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['subsidy', applicationId] });
+      toast.success('Document updated');
+      setExpanded(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update'),
+  });
+
+  const handleStatusToggle = (newStatus) => {
+    setStatus(newStatus);
+    if (newStatus === 'received' && !receivedDate) {
+      setReceivedDate(new Date().toISOString().slice(0, 10));
+    }
+    if (!expanded) setExpanded(true);
+  };
+
+  const handleSave = () => {
+    mutation.mutate({
+      documentId:   doc._id,
+      status,
+      remarks:      remarks || undefined,
+      receivedDate: receivedDate || undefined,
+    });
+  };
+
+  const isReceived = doc.status === 'received';
+
+  return (
+    <div className={`border rounded-xl transition-all ${isReceived ? 'border-green-200 bg-green-50/40' : 'border-gray-100 bg-white'}`}>
+      <div className="p-4 flex items-center gap-3">
+        {/* Status toggle pill */}
+        {canEdit ? (
+          <div className="flex shrink-0 gap-1 p-0.5 bg-gray-100 rounded-lg">
+            {DOC_STATUS_OPTIONS.map(opt => (
+              <button
+                key={opt}
+                onClick={() => handleStatusToggle(opt)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                  status === opt
+                    ? opt === 'received'
+                      ? 'bg-green-600 text-white shadow-sm'
+                      : 'bg-gray-500 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {opt === 'received' ? '✅ Received' : '⏳ Pending'}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Badge color={isReceived ? 'green' : 'gray'}>{doc.status}</Badge>
+        )}
+
+        {/* Document name */}
+        <p className="flex-1 text-sm font-medium text-gray-800">{doc.documentName}</p>
+
+        {/* Received date label */}
+        {doc.receivedDate && (
+          <span className="text-xs text-gray-400 shrink-0">
+            {new Date(doc.receivedDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+          </span>
+        )}
+
+        {/* Expand/collapse for remarks & date */}
+        {canEdit && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="shrink-0 text-xs text-primary-600 hover:underline font-medium"
+          >
+            {expanded ? 'Close' : 'Edit'}
+          </button>
+        )}
+      </div>
+
+      {/* Expanded form */}
+      {expanded && canEdit && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-100 pt-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label-base">Received Date</label>
+              <input type="date" className="input-base"
+                value={receivedDate} onChange={e => setReceivedDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label-base">Remarks</label>
+              <input className="input-base" placeholder="Optional note…"
+                value={remarks} onChange={e => setRemarks(e.target.value)} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+              onClick={() => { setExpanded(false); setStatus(doc.status); }}
+            >Cancel</button>
+            <button
+              className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-60"
+              disabled={mutation.isPending} onClick={handleSave}
+            >
+              {mutation.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DocumentsTab = ({ applicationId, docs, qc, can }) => {
+  const canEdit = can('subsidies.update');
+  const received = docs.filter(d => d.status === 'received').length;
+
+  return (
+    <div className="space-y-3">
+      {/* Progress header */}
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-sm text-gray-500">
+          <span className="font-semibold text-gray-800">{received}</span> of{' '}
+          <span className="font-semibold text-gray-800">{docs.length}</span> documents received
+        </p>
+        <span className="text-xs text-gray-400">{docs.length ? Math.round((received / docs.length) * 100) : 0}%</span>
+      </div>
+      <div className="w-full bg-gray-100 rounded-full h-1.5 mb-3">
+        <div
+          className="bg-green-500 h-1.5 rounded-full transition-all"
+          style={{ width: `${docs.length ? (received / docs.length) * 100 : 0}%` }}
+        />
+      </div>
+
+      {docs.length === 0 && (
+        <p className="text-center text-gray-400 py-8 text-sm">No documents configured.</p>
+      )}
+
+      {docs.map(doc => (
+        <DocumentRow
+          key={doc._id}
+          doc={doc}
+          applicationId={applicationId}
+          qc={qc}
+          canEdit={canEdit}
+        />
+      ))}
+    </div>
+  );
+};
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
 
 const Subsidies = () => {
   usePageTitle('Subsidies');
