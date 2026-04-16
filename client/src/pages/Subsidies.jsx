@@ -58,7 +58,7 @@ const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
     <div className="max-w-lg space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Government of Chandigarh (GOC)</h3>
+          <h3 className="text-base font-semibold text-gray-900">General Officer Certificate (GOC)</h3>
           <p className="text-xs text-gray-400 mt-0.5">Portal login credentials for the GOC application</p>
         </div>
         {canEdit && !editing && (
