@@ -130,7 +130,7 @@ const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateGocCredentials(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('GOC credentials saved'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('GOC credentials saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -192,7 +192,7 @@ const NhbDetailsPanel = ({ applicationId, nhbDetails, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyNhbDetails(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('NHB details saved'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('NHB details saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -297,7 +297,7 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyVerification(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('Verification updated'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('Verification updated'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -377,7 +377,7 @@ const PaymentPanel = ({ applicationId, paymentDetails, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyPayment(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('Payment details saved'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('Payment details saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -461,7 +461,7 @@ const GocDetailsPanel = ({ applicationId, gocDetails, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyGocDetails(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('GOC details saved'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('GOC details saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -471,7 +471,10 @@ const GocDetailsPanel = ({ applicationId, gocDetails, qc, can }) => {
       subtitle="Government Order Certificate application details"
       canEdit={can('subsidies.update')}
       saving={mutation.isPending}
-      onSave={(close) => mutation.mutate(form, { onSuccess: close })}
+      onSave={(close) => {
+        const payload = { ...form, gocApplicationDate: form.gocApplicationDate || undefined };
+        mutation.mutate(payload, { onSuccess: close });
+      }}
       viewContent={
         <div className="grid grid-cols-2 gap-4">
           <InfoRow label="GOC Application Date" value={formatDate(gocDetails?.gocApplicationDate)} />

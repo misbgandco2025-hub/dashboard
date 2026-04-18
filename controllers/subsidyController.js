@@ -150,6 +150,10 @@ const updateApplication = async (req, res, next) => {
     const app = await SubsidyApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
+    // ── Capture previous values for timeline comparison ─────────────────────
+    const prevBankVerifStatus = app.bankVerificationStatus;
+    const prevGeoTagStatus    = app.geoTaggingStatus;
+
     // ── Scalar / flat fields ──────────────────────────────────────────────────
     const allowedFlat = [
       'schemeName', 'schemeType', 'departmentName', 'subsidyAmountApplied', 'eligibleAmount',
@@ -220,7 +224,7 @@ const updateApplication = async (req, res, next) => {
     }
 
     // ── Auto timeline for verification status changes ─────────────────────────
-    if (req.body.bankVerificationStatus && req.body.bankVerificationStatus !== app.bankVerificationStatus) {
+    if (req.body.bankVerificationStatus && req.body.bankVerificationStatus !== prevBankVerifStatus) {
       app.timeline.push({
         activity: `Bank verification marked as "${req.body.bankVerificationStatus}"`,
         activityType: 'verification-update',
@@ -228,7 +232,7 @@ const updateApplication = async (req, res, next) => {
         isSystemGenerated: true,
       });
     }
-    if (req.body.geoTaggingStatus && req.body.geoTaggingStatus !== app.geoTaggingStatus) {
+    if (req.body.geoTaggingStatus && req.body.geoTaggingStatus !== prevGeoTagStatus) {
       app.timeline.push({
         activity: `Geo-tagging marked as "${req.body.geoTaggingStatus}"`,
         activityType: 'verification-update',
