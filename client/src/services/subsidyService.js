@@ -15,7 +15,11 @@ export const assignSubsidy               = (id, data)          => api.put(`/subs
 export const updateGocCredentials        = (id, data)          => api.put(`/subsidies/${id}/goc-credentials`, data);
 
 // ── Typed helpers for nested field updates (all hit PUT /:id) ────────────────
-export const updateSubsidyNhbDetails     = (id, nhbDetails)    => updateSubsidy(id, { nhbDetails });
-export const updateSubsidyGocDetails     = (id, gocDetails)    => updateSubsidy(id, { gocDetails });
-export const updateSubsidyPayment        = (id, paymentDetails) => updateSubsidy(id, { paymentDetails });
-export const updateSubsidyVerification   = (id, data)          => updateSubsidy(id, data);
+export const updateSubsidyNhbDetails     = (id, nhbDetails)        => updateSubsidy(id, { nhbDetails });
+export const updateSubsidyGocDetails     = (id, gocDetails)        => updateSubsidy(id, { gocDetails });
+export const updateSubsidyPayment        = (id, paymentDetails)    => updateSubsidy(id, { paymentDetails });
+export const updateSubsidyVerification   = (id, data)              => updateSubsidy(id, data);
+export const updateSubsidyLoanPrep       = (id, loanPreparation)   => updateSubsidy(id, { loanPreparation });
+export const updateSubsidyBankSubmission = (id, bankSubmission)    => updateSubsidy(id, { bankSubmission });
+export const updateSubsidyBankSanction   = (id, bankLoanSanction)  => updateSubsidy(id, { bankLoanSanction });
+export const updateSubsidyClaim          = (id, subsidyClaim)      => updateSubsidy(id, { subsidyClaim });

@@ -29,6 +29,29 @@ const listPopulateOptions = [
   { path: 'assignedTo', select: 'fullName username' },
 ];
 
+// ── Derive currentStatus from sub-document states ────────────────────────────
+const deriveStatus = (app) => {
+  // Walk backwards from the END of the workflow
+  if (app.paymentDetails?.paymentReceived)                                      return 'Payment Received';
+  if (app.subsidyClaim?.claimStatus === 'disbursed')                            return 'Subsidy Disbursed';
+  if (app.subsidyClaim?.claimStatus === 'rejected')                             return 'Subsidy Claim Rejected';
+  if (app.subsidyClaim?.claimStatus === 'approved')                             return 'Subsidy Claim Approved';
+  if (app.subsidyClaim?.claimStatus === 'submitted')                            return 'Subsidy Claim Submitted';
+  if (app.gocDetails?.gocStatus === 'rejected')                                 return 'GOC Rejected';
+  if (app.gocDetails?.gocStatus === 'approved')                                 return 'GOC Approved';
+  if (app.gocDetails?.gocStatus === 'applied')                                  return 'GOC Application Submitted';
+  if (app.nhbDetails?.nhbPortalStatus &&
+      ['goc-processing','query-issued','query-replied'].includes(app.nhbDetails.nhbPortalStatus)) return 'GOC Processing';
+  if (app.bankLoanSanction?.sanctionStatus === 'rejected')                      return 'Bank Loan Rejected';
+  if (app.bankLoanSanction?.sanctionStatus === 'sanctioned')                    return 'Bank Loan Sanctioned';
+  if (app.bankSubmission?.submissionStatus === 'under-review')                  return 'Under Bank Review';
+  if (app.bankSubmission?.submissionStatus === 'submitted')                     return 'File Submitted to Bank';
+  if (['in-progress','ready'].includes(app.loanPreparation?.preparationStatus)) return 'Loan Preparation';
+  // Check document completion
+  if (app.documentChecklist?.length > 0 && app.documentChecklist.every(d => d.status === 'received')) return 'Documentation Completed';
+  return 'Documentation In Progress';
+};
+
 // ── GET /api/subsidies ────────────────────────────────────────────────────────
 const getApplications = async (req, res, next) => {
   try {
@@ -55,11 +78,13 @@ const getApplications = async (req, res, next) => {
       if (req.query.to)   filter.applicationDate.$lte = new Date(req.query.to);
     }
 
-    // ── New filters ───────────────────────────────────────────────────────────
-    if (req.query.schemeType)             filter.schemeType = req.query.schemeType;
-    if (req.query.nhbPortalStatus)        filter['nhbDetails.nhbPortalStatus'] = req.query.nhbPortalStatus;
-    if (req.query.bankVerificationStatus) filter.bankVerificationStatus = req.query.bankVerificationStatus;
-    if (req.query.geoTaggingStatus)       filter.geoTaggingStatus = req.query.geoTaggingStatus;
+    // ── Filters ───────────────────────────────────────────────────────────────
+    if (req.query.schemeType)                 filter.schemeType = req.query.schemeType;
+    if (req.query.nhbPortalStatus)            filter['nhbDetails.nhbPortalStatus'] = req.query.nhbPortalStatus;
+    if (req.query.gocBankVerificationStatus)  filter.gocBankVerificationStatus = req.query.gocBankVerificationStatus;
+    if (req.query.geoTaggingStatus)           filter.geoTaggingStatus = req.query.geoTaggingStatus;
+    if (req.query.sanctionStatus)             filter['bankLoanSanction.sanctionStatus'] = req.query.sanctionStatus;
+    if (req.query.claimStatus)                filter['subsidyClaim.claimStatus'] = req.query.claimStatus;
     if (req.query.paymentReceived !== undefined && req.query.paymentReceived !== '') {
       filter['paymentDetails.paymentReceived'] = req.query.paymentReceived === 'true';
     }
@@ -151,21 +176,59 @@ const updateApplication = async (req, res, next) => {
     if (!app) return next(ApiError.notFound('Application not found.'));
 
     // ── Capture previous values for timeline comparison ─────────────────────
-    const prevBankVerifStatus = app.bankVerificationStatus;
+    const prevBankVerifStatus = app.gocBankVerificationStatus;
     const prevGeoTagStatus    = app.geoTaggingStatus;
+
+    // ── Business Rule Validations ───────────────────────────────────────────
+
+    // Rejection hard-stop: if sanction rejected, block all downstream updates
+    if (app.bankLoanSanction?.sanctionStatus === 'rejected') {
+      if (req.body.gocDetails || req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
+        return next(ApiError.badRequest('Case closed: bank loan was rejected. No further updates allowed.'));
+      }
+    }
+    // If GOC rejected, block claim and payment
+    if (app.gocDetails?.gocStatus === 'rejected') {
+      if (req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
+        return next(ApiError.badRequest('Case closed: GOC was rejected. No further updates allowed.'));
+      }
+    }
+    // If claim rejected, block payment
+    if (app.subsidyClaim?.claimStatus === 'rejected') {
+      if (req.body.paymentDetails?.paymentReceived) {
+        return next(ApiError.badRequest('Case closed: subsidy claim was rejected. No further updates allowed.'));
+      }
+    }
+
+    if (req.body.gocDetails && req.body.gocDetails.gocStatus &&
+        req.body.gocDetails.gocStatus !== 'not-started' &&
+        app.bankLoanSanction?.sanctionStatus !== 'sanctioned') {
+      return next(ApiError.badRequest('GOC application requires bank loan to be sanctioned first.'));
+    }
+
+    if (req.body.subsidyClaim && req.body.subsidyClaim.claimStatus &&
+        req.body.subsidyClaim.claimStatus !== 'not-submitted' &&
+        app.gocDetails?.gocStatus !== 'approved') {
+      return next(ApiError.badRequest('Subsidy claim requires GOC to be approved first.'));
+    }
+
+    if (req.body.paymentDetails?.paymentReceived === true &&
+        app.subsidyClaim?.claimStatus !== 'disbursed') {
+      return next(ApiError.badRequest('Payment cannot be marked received before subsidy is disbursed.'));
+    }
 
     // ── Scalar / flat fields ──────────────────────────────────────────────────
     const allowedFlat = [
       'schemeName', 'schemeType', 'departmentName', 'subsidyAmountApplied', 'eligibleAmount',
       'approvedAmount', 'subsidyPercentage', 'projectCost', 'submissionDate', 'approvalDate',
       'releaseDate', 'receivedDate', 'utrNumber', 'currentStage', 'priority',
-      'bankVerificationStatus', 'bankVerificationDate', 'geoTaggingStatus', 'geoTaggingDate',
+      'gocBankVerificationStatus', 'gocBankVerificationDate', 'geoTaggingStatus', 'geoTaggingDate',
     ];
     allowedFlat.forEach(f => { if (req.body[f] !== undefined) app[f] = req.body[f]; });
 
     // ── Auto-set verification dates on status → 'completed' ──────────────────
-    if (req.body.bankVerificationStatus === 'completed' && !app.bankVerificationDate) {
-      app.bankVerificationDate = new Date();
+    if (req.body.gocBankVerificationStatus === 'completed' && !app.gocBankVerificationDate) {
+      app.gocBankVerificationDate = new Date();
     }
     if (req.body.geoTaggingStatus === 'completed' && !app.geoTaggingDate) {
       app.geoTaggingDate = new Date();
@@ -197,11 +260,109 @@ const updateApplication = async (req, res, next) => {
       app.markModified('nhbDetails');
     }
 
-    // ── gocDetails: shallow merge ─────────────────────────────────────────────
+    // ── gocDetails: shallow merge + timeline ──────────────────────────────────
     if (req.body.gocDetails) {
+      const prevGocStatus = app.gocDetails?.gocStatus;
       if (!app.gocDetails) app.gocDetails = {};
       Object.assign(app.gocDetails, req.body.gocDetails);
       app.markModified('gocDetails');
+
+      if (req.body.gocDetails.gocStatus && req.body.gocDetails.gocStatus !== prevGocStatus) {
+        app.timeline.push({
+          activity: `GOC status changed to "${req.body.gocDetails.gocStatus}"`,
+          activityType: 'verification-update',
+          performedBy: req.user._id,
+          previousStatus: prevGocStatus,
+          newStatus: req.body.gocDetails.gocStatus,
+          isSystemGenerated: true,
+        });
+      }
+    }
+
+    // ── loanPreparation: shallow merge + timeline ────────────────────────────
+    if (req.body.loanPreparation) {
+      const prevStatus = app.loanPreparation?.preparationStatus;
+      if (!app.loanPreparation) app.loanPreparation = {};
+      Object.assign(app.loanPreparation, req.body.loanPreparation);
+      app.markModified('loanPreparation');
+
+      if (req.body.loanPreparation.preparationStatus && req.body.loanPreparation.preparationStatus !== prevStatus) {
+        app.timeline.push({
+          activity: `Loan preparation status changed to "${req.body.loanPreparation.preparationStatus}"`,
+          activityType: 'loan-update',
+          performedBy: req.user._id,
+          previousStatus: prevStatus,
+          newStatus: req.body.loanPreparation.preparationStatus,
+          isSystemGenerated: true,
+        });
+      }
+    }
+
+    // ── bankSubmission: shallow merge + timeline ─────────────────────────────
+    if (req.body.bankSubmission) {
+      const prevStatus = app.bankSubmission?.submissionStatus;
+      if (!app.bankSubmission) app.bankSubmission = {};
+      Object.assign(app.bankSubmission, req.body.bankSubmission);
+      app.markModified('bankSubmission');
+
+      if (req.body.bankSubmission.submissionStatus && req.body.bankSubmission.submissionStatus !== prevStatus) {
+        app.timeline.push({
+          activity: `Bank submission status changed to "${req.body.bankSubmission.submissionStatus}"`,
+          activityType: 'loan-update',
+          performedBy: req.user._id,
+          previousStatus: prevStatus,
+          newStatus: req.body.bankSubmission.submissionStatus,
+          isSystemGenerated: true,
+        });
+      }
+    }
+
+    // ── bankLoanSanction: shallow merge + timeline ───────────────────────────
+    if (req.body.bankLoanSanction) {
+      const prevStatus = app.bankLoanSanction?.sanctionStatus;
+      if (!app.bankLoanSanction) app.bankLoanSanction = {};
+      Object.assign(app.bankLoanSanction, req.body.bankLoanSanction);
+      app.markModified('bankLoanSanction');
+
+      if (req.body.bankLoanSanction.sanctionStatus && req.body.bankLoanSanction.sanctionStatus !== prevStatus) {
+        app.timeline.push({
+          activity: `Bank loan sanction status changed to "${req.body.bankLoanSanction.sanctionStatus}"`,
+          activityType: 'loan-update',
+          performedBy: req.user._id,
+          previousStatus: prevStatus,
+          newStatus: req.body.bankLoanSanction.sanctionStatus,
+          isSystemGenerated: true,
+        });
+      }
+    }
+
+    // ── subsidyClaim: shallow merge + timeline ───────────────────────────────
+    if (req.body.subsidyClaim) {
+      const prevStatus = app.subsidyClaim?.claimStatus;
+      const prevDisbDate = app.subsidyClaim?.disbursementDate;
+      if (!app.subsidyClaim) app.subsidyClaim = {};
+      Object.assign(app.subsidyClaim, req.body.subsidyClaim);
+      app.markModified('subsidyClaim');
+
+      if (req.body.subsidyClaim.claimStatus && req.body.subsidyClaim.claimStatus !== prevStatus) {
+        app.timeline.push({
+          activity: `Subsidy claim status changed to "${req.body.subsidyClaim.claimStatus}"`,
+          activityType: 'claim-update',
+          performedBy: req.user._id,
+          previousStatus: prevStatus,
+          newStatus: req.body.subsidyClaim.claimStatus,
+          isSystemGenerated: true,
+        });
+      }
+
+      if (req.body.subsidyClaim.disbursementDate && !prevDisbDate) {
+        app.timeline.push({
+          activity: `Subsidy disbursement date set to ${new Date(req.body.subsidyClaim.disbursementDate).toLocaleDateString('en-IN')}`,
+          activityType: 'claim-update',
+          performedBy: req.user._id,
+          isSystemGenerated: true,
+        });
+      }
     }
 
     // ── paymentDetails: shallow merge + auto timeline ─────────────────────────
@@ -224,9 +385,9 @@ const updateApplication = async (req, res, next) => {
     }
 
     // ── Auto timeline for verification status changes ─────────────────────────
-    if (req.body.bankVerificationStatus && req.body.bankVerificationStatus !== prevBankVerifStatus) {
+    if (req.body.gocBankVerificationStatus && req.body.gocBankVerificationStatus !== prevBankVerifStatus) {
       app.timeline.push({
-        activity: `Bank verification marked as "${req.body.bankVerificationStatus}"`,
+        activity: `GOC Bank verification marked as "${req.body.gocBankVerificationStatus}"`,
         activityType: 'verification-update',
         performedBy: req.user._id,
         isSystemGenerated: true,
@@ -237,6 +398,22 @@ const updateApplication = async (req, res, next) => {
         activity: `Geo-tagging marked as "${req.body.geoTaggingStatus}"`,
         activityType: 'verification-update',
         performedBy: req.user._id,
+        isSystemGenerated: true,
+      });
+    }
+
+    // ── Auto-derive currentStatus from sub-document states ────────────────────
+    const prevStatus = app.currentStatus;
+    const derived = deriveStatus(app);
+    if (derived !== prevStatus) {
+      app.currentStatus = derived;
+      app.lastStatusChangeDate = new Date();
+      app.timeline.push({
+        activity: `Status auto-updated: "${prevStatus}" → "${derived}"`,
+        activityType: 'status-change',
+        performedBy: req.user._id,
+        previousStatus: prevStatus,
+        newStatus: derived,
         isSystemGenerated: true,
       });
     }
@@ -278,6 +455,7 @@ const updateStatus = async (req, res, next) => {
 
     const previousStatus = app.currentStatus;
     app.currentStatus = status;
+    app.lastStatusChangeDate = new Date();
 
     app.timeline.push({
       activity: `Status changed from "${previousStatus}" to "${status}"`,

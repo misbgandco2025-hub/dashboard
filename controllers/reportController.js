@@ -116,7 +116,7 @@ const statusWiseReport = async (req, res, next) => {
             select: 'name clientId mobile bankName branchName vendorId',
             populate: { path: 'vendorId', select: 'vendorName' },
           })
-          .select('applicationId applicationDate priority schemeType nhbDetails paymentDetails bankVerificationStatus geoTaggingStatus')
+          .select('applicationId applicationDate priority schemeType nhbDetails paymentDetails gocBankVerificationStatus geoTaggingStatus')
           .lean();
         return {
           status: g._id,
@@ -153,7 +153,7 @@ const subsidyAnalytics = async (req, res, next) => {
         // Bank verification status
         SubsidyApplication.aggregate([
           { $match: base },
-          { $group: { _id: '$bankVerificationStatus', count: { $sum: 1 } } },
+          { $group: { _id: '$gocBankVerificationStatus', count: { $sum: 1 } } },
         ]),
         // Geo-tagging status
         SubsidyApplication.aggregate([
@@ -184,7 +184,7 @@ const subsidyAnalytics = async (req, res, next) => {
             select: 'name clientId mobile bankName branchName vendorId',
             populate: { path: 'vendorId', select: 'vendorName' },
           })
-          .select('applicationId applicationDate currentStatus nhbDetails bankVerificationStatus geoTaggingStatus paymentDetails')
+          .select('applicationId applicationDate currentStatus nhbDetails gocBankVerificationStatus geoTaggingStatus paymentDetails')
           .lean();
         return { status: g._id || 'goc-new', count: g.count, applications: apps };
       })

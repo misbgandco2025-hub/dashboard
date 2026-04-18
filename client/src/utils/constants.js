@@ -7,6 +7,7 @@ export const ROLES = {
 };
 
 export const STATUS_COLORS = {
+  // ── Shared / Bank-Loan statuses ────────────────────────────────────────────
   'Documentation In Progress': 'blue',
   'Documentation Completed': 'green',
   'Portal Registration Pending': 'yellow',
@@ -30,6 +31,21 @@ export const STATUS_COLORS = {
   'Subsidy Release Pending': 'yellow',
   'Subsidy Released': 'emerald',
   'Subsidy Received': 'emerald',
+  // ── Subsidy 13-step workflow statuses ───────────────────────────────────────
+  'Loan Preparation': 'blue',
+  'File Submitted to Bank': 'purple',
+  'Bank Loan Sanctioned': 'green',
+  'Bank Loan Rejected': 'red',
+  'GOC Application Submitted': 'orange',
+  'GOC Processing': 'yellow',
+  'GOC Approved': 'green',
+  'GOC Rejected': 'red',
+  'Subsidy Claim Submitted': 'purple',
+  'Subsidy Claim Approved': 'green',
+  'Subsidy Claim Rejected': 'red',
+  'Subsidy Disbursed': 'emerald',
+  'Payment Received': 'emerald',
+  'Completed': 'green',
 };
 
 export const BADGE_COLORS = {

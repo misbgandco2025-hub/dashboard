@@ -53,7 +53,7 @@ const timelineSchema = new mongoose.Schema({
   activity: { type: String, required: true, trim: true },
   activityType: {
     type: String,
-    enum: ['status-change', 'document-update', 'query', 'note', 'portal-update', 'assignment', 'verification-update', 'payment-update'],
+    enum: ['status-change', 'document-update', 'query', 'note', 'portal-update', 'assignment', 'verification-update', 'payment-update', 'loan-update', 'claim-update'],
     default: 'note',
   },
   activityDate: { type: Date, default: Date.now },
@@ -99,6 +99,61 @@ const paymentDetailsSchema = new mongoose.Schema({
   transactionReference: { type: String, trim: true },
 }, { _id: false });
 
+// ── Loan Preparation Sub-schema (NEW) ─────────────────────────────────────────
+const loanPreparationSchema = new mongoose.Schema({
+  preparationStartDate:     { type: Date },
+  preparationCompletedDate: { type: Date },
+  loanAmountCalculated:     { type: Number, min: 0 },
+  preparationStatus: {
+    type: String,
+    enum: ['not-started', 'in-progress', 'ready'],
+    default: 'not-started',
+  },
+}, { _id: false });
+
+// ── Bank Submission Sub-schema (NEW) ──────────────────────────────────────────
+const bankSubmissionSchema = new mongoose.Schema({
+  submissionDate:          { type: Date },
+  bankFileReferenceNumber: { type: String, trim: true },
+  bankOfficerName:         { type: String, trim: true },
+  bankOfficerContact:      { type: String, trim: true },
+  submissionStatus: {
+    type: String,
+    enum: ['not-submitted', 'submitted', 'under-review'],
+    default: 'not-submitted',
+  },
+}, { _id: false });
+
+// ── Bank Loan Sanction Sub-schema (NEW) ───────────────────────────────────────
+const bankLoanSanctionSchema = new mongoose.Schema({
+  sanctionDate:         { type: Date },
+  sanctionedAmount:     { type: Number, min: 0 },
+  sanctionLetterNumber: { type: String, trim: true },
+  sanctionConditions:   { type: String, trim: true },
+  sanctionStatus: {
+    type: String,
+    enum: ['pending', 'sanctioned', 'rejected'],
+    default: 'pending',
+  },
+  rejectionReason: { type: String, trim: true },
+}, { _id: false });
+
+// ── Subsidy Claim Sub-schema (NEW) ───────────────────────────────────────────
+const subsidyClaimSchema = new mongoose.Schema({
+  claimSubmissionDate:   { type: Date },
+  claimReferenceNumber:  { type: String, trim: true },
+  approvedSubsidyAmount: { type: Number, min: 0 },
+  claimApprovalDate:     { type: Date },
+  disbursementDate:      { type: Date },
+  claimStatus: {
+    type: String,
+    enum: ['not-submitted', 'submitted', 'approved', 'rejected', 'disbursed'],
+    default: 'not-submitted',
+  },
+  rejectionReason: { type: String, trim: true },
+  rejectionDate:   { type: Date },
+}, { _id: false });
+
 // ── Main Schema ───────────────────────────────────────────────────────────────
 const subsidyApplicationSchema = new mongoose.Schema(
   {
@@ -134,8 +189,33 @@ const subsidyApplicationSchema = new mongoose.Schema(
     releaseDate:           { type: Date },
     receivedDate:          { type: Date },
     utrNumber:             { type: String, trim: true },
-    currentStatus:         { type: String, default: 'Documentation In Progress', trim: true },
+    currentStatus: {
+      type: String,
+      default: 'Documentation In Progress',
+      trim: true,
+      enum: [
+        'Documentation In Progress',
+        'Documentation Completed',
+        'Loan Preparation',
+        'File Submitted to Bank',
+        'Under Bank Review',
+        'Bank Loan Sanctioned',
+        'Bank Loan Rejected',
+        'GOC Application Submitted',
+        'GOC Processing',
+        'GOC Approved',
+        'GOC Rejected',
+        'Subsidy Claim Submitted',
+        'Subsidy Claim Approved',
+        'Subsidy Claim Rejected',
+        'Subsidy Disbursed',
+        'Payment Received',
+        'Completed',
+        'Rejected',
+      ],
+    },
     currentStage:          { type: String, trim: true },
+    lastStatusChangeDate:  { type: Date, default: Date.now },
     assignedTo:            { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     priority:              { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
 
@@ -145,13 +225,25 @@ const subsidyApplicationSchema = new mongoose.Schema(
     // ── GOC details (applies to all schemes that go through GOC) ─────────────
     gocDetails: { type: gocDetailsSchema, default: () => ({}) },
 
-    // ── Verification statuses (top-level — apply across all schemes) ──────────
-    bankVerificationStatus: {
+    // ── Loan Preparation (NEW) ───────────────────────────────────────────────
+    loanPreparation: { type: loanPreparationSchema, default: () => ({}) },
+
+    // ── Bank Submission (NEW) ────────────────────────────────────────────────
+    bankSubmission: { type: bankSubmissionSchema, default: () => ({}) },
+
+    // ── Bank Loan Sanction (NEW) ─────────────────────────────────────────────
+    bankLoanSanction: { type: bankLoanSanctionSchema, default: () => ({}) },
+
+    // ── Subsidy Claim (NEW) ──────────────────────────────────────────────────
+    subsidyClaim: { type: subsidyClaimSchema, default: () => ({}) },
+
+    // ── GOC-related verification statuses (renamed from bankVerification) ────
+    gocBankVerificationStatus: {
       type: String,
       enum: ['not-started', 'pending', 'completed'],
       default: 'not-started',
     },
-    bankVerificationDate: { type: Date },
+    gocBankVerificationDate: { type: Date },
     geoTaggingStatus: {
       type: String,
       enum: ['not-started', 'pending', 'completed'],
@@ -209,7 +301,9 @@ subsidyApplicationSchema.index({ assignedTo: 1, currentStatus: 1 });
 subsidyApplicationSchema.index({ applicationDate: -1 });
 subsidyApplicationSchema.index({ schemeType: 1 });
 subsidyApplicationSchema.index({ 'nhbDetails.nhbPortalStatus': 1 });
-subsidyApplicationSchema.index({ bankVerificationStatus: 1, geoTaggingStatus: 1 });
+subsidyApplicationSchema.index({ gocBankVerificationStatus: 1, geoTaggingStatus: 1 });
 subsidyApplicationSchema.index({ 'paymentDetails.paymentReceived': 1 });
+subsidyApplicationSchema.index({ 'bankLoanSanction.sanctionStatus': 1 });
+subsidyApplicationSchema.index({ 'subsidyClaim.claimStatus': 1 });
 
 module.exports = mongoose.model('SubsidyApplication', subsidyApplicationSchema);

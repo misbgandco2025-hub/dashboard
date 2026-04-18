@@ -242,7 +242,7 @@ const SubsidyAnalyticsView = () => {
         client: a.clientId?.name, mobile: a.clientId?.mobile,
         bank: a.clientId?.bankName, vendor: a.clientId?.vendorId?.vendorName,
         nhbId: a.nhbDetails?.nhbId, nhbProjectCode: a.nhbDetails?.nhbProjectCode,
-        bankVerif: a.bankVerificationStatus, geoTag: a.geoTaggingStatus,
+        bankVerif: a.gocBankVerificationStatus, geoTag: a.geoTaggingStatus,
         paymentReceived: a.paymentDetails?.paymentReceived ? 'Yes' : 'No',
         date: formatDate(a.applicationDate),
       }))

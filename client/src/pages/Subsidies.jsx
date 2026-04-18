@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Eye, Trash2, ChevronRight, Filter, X } from 'lucide-react';
+import { Plus, Search, Eye, Trash2, ChevronRight, Filter, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
 
@@ -11,6 +11,8 @@ import {
   updateGocCredentials,
   updateSubsidyNhbDetails, updateSubsidyGocDetails,
   updateSubsidyPayment, updateSubsidyVerification,
+  updateSubsidyLoanPrep, updateSubsidyBankSubmission,
+  updateSubsidyBankSanction, updateSubsidyClaim,
 } from '../services/subsidyService';
 import { getClients } from '../services/clientService';
 import useAuth from '../hooks/useAuth';
@@ -59,6 +61,32 @@ const GOC_STATUS_META = {
   rejected:      { label: 'Rejected',    color: 'red'    },
 };
 
+const LOAN_PREP_META = {
+  'not-started':  { label: 'Not Started',  color: 'gray'   },
+  'in-progress':  { label: 'In Progress',  color: 'yellow' },
+  ready:          { label: 'Ready',        color: 'green'  },
+};
+
+const BANK_SUB_META = {
+  'not-submitted': { label: 'Not Submitted', color: 'gray'   },
+  submitted:       { label: 'Submitted',     color: 'blue'   },
+  'under-review':  { label: 'Under Review',  color: 'yellow' },
+};
+
+const SANCTION_META = {
+  pending:    { label: 'Pending',    color: 'yellow' },
+  sanctioned: { label: 'Sanctioned', color: 'green'  },
+  rejected:   { label: 'Rejected',   color: 'red'    },
+};
+
+const CLAIM_META = {
+  'not-submitted': { label: 'Not Submitted', color: 'gray'   },
+  submitted:       { label: 'Submitted',     color: 'blue'   },
+  approved:        { label: 'Approved',      color: 'green'  },
+  rejected:        { label: 'Rejected',      color: 'red'    },
+  disbursed:       { label: 'Disbursed',     color: 'emerald' },
+};
+
 const SchemeBadge = ({ value }) => {
   const meta = SCHEME_META[value] || SCHEME_META.none;
   return <Badge color={meta.color}>{meta.label}</Badge>;
@@ -74,6 +102,20 @@ const NHBStatusBadge = ({ value }) => {
   const meta = NHB_PORTAL_META[value] || { label: value, color: 'gray' };
   return <Badge color={meta.color}>{meta.label}</Badge>;
 };
+
+const MetaBadge = ({ value, meta }) => {
+  const m = meta[value] || Object.values(meta)[0];
+  return <Badge color={m.color}>{m.label}</Badge>;
+};
+
+// ─── Prerequisite Alert ──────────────────────────────────────────────────────
+
+const PrerequisiteAlert = ({ message }) => (
+  <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+    <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+    <p className="text-sm text-amber-800">{message}</p>
+  </div>
+);
 
 // ─── Reusable Editable Panel ─────────────────────────────────────────────────
 
@@ -118,6 +160,13 @@ const InfoRow = ({ label, value, mono }) => (
   </div>
 );
 
+// ─── Helper: invalidate both list + detail ───────────────────────────────────
+
+const invalidateBoth = (qc, applicationId) => {
+  qc.invalidateQueries({ queryKey: ['subsidy', applicationId] });
+  qc.invalidateQueries({ queryKey: ['subsidies'] });
+};
+
 // ─── GOC Credentials Panel ────────────────────────────────────────────────────
 
 const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
@@ -130,7 +179,7 @@ const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateGocCredentials(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('GOC credentials saved'); },
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('GOC credentials saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -192,7 +241,7 @@ const NhbDetailsPanel = ({ applicationId, nhbDetails, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyNhbDetails(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidies'] }); qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); toast.success('NHB details saved'); },
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('NHB details saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -249,7 +298,7 @@ const NhbDetailsPanel = ({ applicationId, nhbDetails, qc, can }) => {
   );
 };
 
-// ─── Verification Panel ───────────────────────────────────────────────────────
+// ─── Verification Panel (renamed field) ───────────────────────────────────────
 
 const VERIFY_OPTIONS = ['not-started', 'pending', 'completed'];
 
@@ -274,14 +323,14 @@ const VerificationToggle = ({ label, value, onChange }) => (
 );
 
 const VerificationPanel = ({ applicationId, app, qc, can }) => {
-  const [bankStatus, setBankStatus] = useState(app.bankVerificationStatus || 'not-started');
-  const [bankDate, setBankDate]     = useState(app.bankVerificationDate ? new Date(app.bankVerificationDate).toISOString().slice(0, 10) : '');
+  const [bankStatus, setBankStatus] = useState(app.gocBankVerificationStatus || 'not-started');
+  const [bankDate, setBankDate]     = useState(app.gocBankVerificationDate ? new Date(app.gocBankVerificationDate).toISOString().slice(0, 10) : '');
   const [geoStatus, setGeoStatus]   = useState(app.geoTaggingStatus || 'not-started');
   const [geoDate, setGeoDate]       = useState(app.geoTaggingDate    ? new Date(app.geoTaggingDate).toISOString().slice(0, 10)    : '');
 
   useEffect(() => {
-    setBankStatus(app.bankVerificationStatus || 'not-started');
-    setBankDate(app.bankVerificationDate ? new Date(app.bankVerificationDate).toISOString().slice(0, 10) : '');
+    setBankStatus(app.gocBankVerificationStatus || 'not-started');
+    setBankDate(app.gocBankVerificationDate ? new Date(app.gocBankVerificationDate).toISOString().slice(0, 10) : '');
     setGeoStatus(app.geoTaggingStatus || 'not-started');
     setGeoDate(app.geoTaggingDate ? new Date(app.geoTaggingDate).toISOString().slice(0, 10) : '');
   }, [app]);
@@ -297,7 +346,7 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyVerification(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('Verification updated'); },
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Verification updated'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -306,11 +355,11 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-        {/* Bank Verification */}
+        {/* GOC Bank Verification */}
         <div className="card p-4 space-y-4">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-full bg-blue-50 flex items-center justify-center text-base">🏦</div>
-            <p className="font-medium text-gray-800">Bank Verification</p>
+            <p className="font-medium text-gray-800">GOC Bank Verification</p>
           </div>
           {canEdit ? (
             <VerificationToggle label="Status" value={bankStatus} onChange={handleBankStatusChange} />
@@ -346,8 +395,8 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
       {canEdit && (
         <div className="flex justify-end">
           <Button loading={mutation.isPending} onClick={() => mutation.mutate({
-            bankVerificationStatus: bankStatus,
-            bankVerificationDate:   bankDate || undefined,
+            gocBankVerificationStatus: bankStatus,
+            gocBankVerificationDate:   bankDate || undefined,
             geoTaggingStatus:       geoStatus,
             geoTaggingDate:         geoDate  || undefined,
           })}>Save Verification</Button>
@@ -357,13 +406,461 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
   );
 };
 
-// ─── Payment Panel ────────────────────────────────────────────────────────────
+// ─── Loan Preparation Panel (NEW) ────────────────────────────────────────────
 
-const PaymentPanel = ({ applicationId, paymentDetails, qc, can }) => {
+const LoanPreparationPanel = ({ applicationId, loanPreparation, qc, can }) => {
+  const [form, setForm] = useState({
+    preparationStartDate: '', preparationCompletedDate: '',
+    loanAmountCalculated: '', preparationStatus: 'not-started',
+  });
+
+  useEffect(() => {
+    setForm({
+      preparationStartDate:     loanPreparation?.preparationStartDate ? new Date(loanPreparation.preparationStartDate).toISOString().slice(0, 10) : '',
+      preparationCompletedDate: loanPreparation?.preparationCompletedDate ? new Date(loanPreparation.preparationCompletedDate).toISOString().slice(0, 10) : '',
+      loanAmountCalculated:     loanPreparation?.loanAmountCalculated ?? '',
+      preparationStatus:        loanPreparation?.preparationStatus ?? 'not-started',
+    });
+  }, [loanPreparation]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyLoanPrep(applicationId, data),
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Loan preparation saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  return (
+    <EditablePanel
+      title="Loan Preparation"
+      subtitle="Prepare loan application details before bank submission"
+      canEdit={can('subsidies.update')}
+      saving={mutation.isPending}
+      onSave={(close) => {
+        const payload = {
+          ...form,
+          preparationStartDate:     form.preparationStartDate || undefined,
+          preparationCompletedDate: form.preparationCompletedDate || undefined,
+          loanAmountCalculated:     form.loanAmountCalculated || undefined,
+        };
+        mutation.mutate(payload, { onSuccess: close });
+      }}
+      viewContent={
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Status</span>
+            <MetaBadge value={loanPreparation?.preparationStatus} meta={LOAN_PREP_META} />
+          </div>
+          <InfoRow label="Loan Amount" value={loanPreparation?.loanAmountCalculated ? `₹${Number(loanPreparation.loanAmountCalculated).toLocaleString('en-IN')}` : null} />
+          <InfoRow label="Start Date" value={formatDate(loanPreparation?.preparationStartDate)} />
+          <InfoRow label="Completed Date" value={formatDate(loanPreparation?.preparationCompletedDate)} />
+        </div>
+      }
+    >
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="label-base">Status</label>
+          <select className="input-base" value={form.preparationStatus} onChange={e => setForm(f => ({ ...f, preparationStatus: e.target.value }))}>
+            {Object.entries(LOAN_PREP_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label-base">Loan Amount (₹)</label>
+          <input type="number" className="input-base" placeholder="Calculated loan amount"
+            value={form.loanAmountCalculated} onChange={e => setForm(f => ({ ...f, loanAmountCalculated: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Start Date</label>
+          <input type="date" className="input-base"
+            value={form.preparationStartDate} onChange={e => setForm(f => ({ ...f, preparationStartDate: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Completed Date</label>
+          <input type="date" className="input-base"
+            value={form.preparationCompletedDate} onChange={e => setForm(f => ({ ...f, preparationCompletedDate: e.target.value }))} />
+        </div>
+      </div>
+    </EditablePanel>
+  );
+};
+
+// ─── Bank Loan Panel (Submission + Sanction) (NEW) ───────────────────────────
+
+const BankLoanPanel = ({ applicationId, bankSubmission, bankLoanSanction, qc, can }) => {
+  // ── Submission form
+  const [subForm, setSubForm] = useState({
+    submissionDate: '', bankFileReferenceNumber: '',
+    bankOfficerName: '', bankOfficerContact: '', submissionStatus: 'not-submitted',
+  });
+
+  useEffect(() => {
+    setSubForm({
+      submissionDate:          bankSubmission?.submissionDate ? new Date(bankSubmission.submissionDate).toISOString().slice(0, 10) : '',
+      bankFileReferenceNumber: bankSubmission?.bankFileReferenceNumber ?? '',
+      bankOfficerName:         bankSubmission?.bankOfficerName ?? '',
+      bankOfficerContact:      bankSubmission?.bankOfficerContact ?? '',
+      submissionStatus:        bankSubmission?.submissionStatus ?? 'not-submitted',
+    });
+  }, [bankSubmission]);
+
+  const subMutation = useMutation({
+    mutationFn: (data) => updateSubsidyBankSubmission(applicationId, data),
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Bank submission saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  // ── Sanction form
+  const [sanForm, setSanForm] = useState({
+    sanctionDate: '', sanctionedAmount: '', sanctionLetterNumber: '',
+    sanctionConditions: '', sanctionStatus: 'pending', rejectionReason: '',
+  });
+
+  useEffect(() => {
+    setSanForm({
+      sanctionDate:         bankLoanSanction?.sanctionDate ? new Date(bankLoanSanction.sanctionDate).toISOString().slice(0, 10) : '',
+      sanctionedAmount:     bankLoanSanction?.sanctionedAmount ?? '',
+      sanctionLetterNumber: bankLoanSanction?.sanctionLetterNumber ?? '',
+      sanctionConditions:   bankLoanSanction?.sanctionConditions ?? '',
+      sanctionStatus:       bankLoanSanction?.sanctionStatus ?? 'pending',
+      rejectionReason:      bankLoanSanction?.rejectionReason ?? '',
+    });
+  }, [bankLoanSanction]);
+
+  const sanMutation = useMutation({
+    mutationFn: (data) => updateSubsidyBankSanction(applicationId, data),
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Sanction details saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  const canEdit = can('subsidies.update');
+
+  return (
+    <div className="space-y-8">
+      {/* ── Bank Submission ─────────────────────────────────── */}
+      <EditablePanel
+        title="Bank Submission"
+        subtitle="File submission details to bank"
+        canEdit={canEdit}
+        saving={subMutation.isPending}
+        onSave={(close) => {
+          const payload = { ...subForm, submissionDate: subForm.submissionDate || undefined };
+          subMutation.mutate(payload, { onSuccess: close });
+        }}
+        viewContent={
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-gray-400 font-medium">Submission Status</span>
+              <MetaBadge value={bankSubmission?.submissionStatus} meta={BANK_SUB_META} />
+            </div>
+            <InfoRow label="Submission Date" value={formatDate(bankSubmission?.submissionDate)} />
+            <InfoRow label="Bank File Ref. No." value={bankSubmission?.bankFileReferenceNumber} mono />
+            <InfoRow label="Officer Name" value={bankSubmission?.bankOfficerName} />
+            <InfoRow label="Officer Contact" value={bankSubmission?.bankOfficerContact} />
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label-base">Status</label>
+            <select className="input-base" value={subForm.submissionStatus} onChange={e => setSubForm(f => ({ ...f, submissionStatus: e.target.value }))}>
+              {Object.entries(BANK_SUB_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-base">Submission Date</label>
+            <input type="date" className="input-base"
+              value={subForm.submissionDate} onChange={e => setSubForm(f => ({ ...f, submissionDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Bank File Reference No.</label>
+            <input className="input-base font-mono" placeholder="Reference number…"
+              value={subForm.bankFileReferenceNumber} onChange={e => setSubForm(f => ({ ...f, bankFileReferenceNumber: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Bank Officer Name</label>
+            <input className="input-base"
+              value={subForm.bankOfficerName} onChange={e => setSubForm(f => ({ ...f, bankOfficerName: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Bank Officer Contact</label>
+            <input className="input-base"
+              value={subForm.bankOfficerContact} onChange={e => setSubForm(f => ({ ...f, bankOfficerContact: e.target.value }))} />
+          </div>
+        </div>
+      </EditablePanel>
+
+      {/* ── Bank Loan Sanction ─────────────────────────────── */}
+      <EditablePanel
+        title="Bank Loan Sanction"
+        subtitle="Loan sanction / rejection status from the bank"
+        canEdit={canEdit}
+        saving={sanMutation.isPending}
+        onSave={(close) => {
+          const payload = {
+            ...sanForm,
+            sanctionDate:     sanForm.sanctionDate || undefined,
+            sanctionedAmount: sanForm.sanctionedAmount || undefined,
+          };
+          sanMutation.mutate(payload, { onSuccess: close });
+        }}
+        viewContent={
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-gray-400 font-medium">Sanction Status</span>
+              <MetaBadge value={bankLoanSanction?.sanctionStatus} meta={SANCTION_META} />
+            </div>
+            <InfoRow label="Sanction Date" value={formatDate(bankLoanSanction?.sanctionDate)} />
+            <InfoRow label="Sanctioned Amount" value={bankLoanSanction?.sanctionedAmount ? `₹${Number(bankLoanSanction.sanctionedAmount).toLocaleString('en-IN')}` : null} />
+            <InfoRow label="Sanction Letter No." value={bankLoanSanction?.sanctionLetterNumber} mono />
+            {bankLoanSanction?.sanctionConditions && <InfoRow label="Conditions" value={bankLoanSanction.sanctionConditions} />}
+            {bankLoanSanction?.sanctionStatus === 'rejected' && (
+              <InfoRow label="Rejection Reason" value={bankLoanSanction.rejectionReason} />
+            )}
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label-base">Sanction Status</label>
+            <select className="input-base" value={sanForm.sanctionStatus} onChange={e => setSanForm(f => ({ ...f, sanctionStatus: e.target.value }))}>
+              {Object.entries(SANCTION_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-base">Sanction Date</label>
+            <input type="date" className="input-base"
+              value={sanForm.sanctionDate} onChange={e => setSanForm(f => ({ ...f, sanctionDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Sanctioned Amount (₹)</label>
+            <input type="number" className="input-base"
+              value={sanForm.sanctionedAmount} onChange={e => setSanForm(f => ({ ...f, sanctionedAmount: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Sanction Letter No.</label>
+            <input className="input-base font-mono"
+              value={sanForm.sanctionLetterNumber} onChange={e => setSanForm(f => ({ ...f, sanctionLetterNumber: e.target.value }))} />
+          </div>
+          <div className="col-span-2">
+            <label className="label-base">Conditions</label>
+            <textarea className="input-base resize-none" rows={2}
+              value={sanForm.sanctionConditions} onChange={e => setSanForm(f => ({ ...f, sanctionConditions: e.target.value }))} />
+          </div>
+          {sanForm.sanctionStatus === 'rejected' && (
+            <div className="col-span-2">
+              <label className="label-base">Rejection Reason <span className="text-danger-500">*</span></label>
+              <textarea className="input-base resize-none" rows={2} placeholder="Why was the loan rejected?"
+                value={sanForm.rejectionReason} onChange={e => setSanForm(f => ({ ...f, rejectionReason: e.target.value }))} />
+            </div>
+          )}
+        </div>
+      </EditablePanel>
+    </div>
+  );
+};
+
+// ─── GOC Details Panel (with prerequisite guard) ──────────────────────────────
+
+const GocDetailsPanel = ({ applicationId, gocDetails, bankLoanSanction, qc, can }) => {
+  const [form, setForm] = useState({ gocApplicationDate: '', gocStatus: 'not-started' });
+
+  const canEditGoc = useMemo(() => {
+    return bankLoanSanction?.sanctionStatus === 'sanctioned';
+  }, [bankLoanSanction]);
+
+  useEffect(() => {
+    setForm({
+      gocApplicationDate: gocDetails?.gocApplicationDate ? new Date(gocDetails.gocApplicationDate).toISOString().slice(0, 10) : '',
+      gocStatus: gocDetails?.gocStatus ?? 'not-started',
+    });
+  }, [gocDetails]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyGocDetails(applicationId, data),
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('GOC details saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  return (
+    <div className="space-y-4">
+      {!canEditGoc && (
+        <PrerequisiteAlert message="GOC application can only be submitted after bank loan is sanctioned." />
+      )}
+      <EditablePanel
+        title="GOC Application"
+        subtitle="Government Order Certificate application details"
+        canEdit={can('subsidies.update') && canEditGoc}
+        saving={mutation.isPending}
+        onSave={(close) => {
+          const payload = { ...form, gocApplicationDate: form.gocApplicationDate || undefined };
+          mutation.mutate(payload, { onSuccess: close });
+        }}
+        viewContent={
+          <div className="grid grid-cols-2 gap-4">
+            <InfoRow label="GOC Application Date" value={formatDate(gocDetails?.gocApplicationDate)} />
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-gray-400 font-medium">GOC Status</span>
+              <Badge color={(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).color}>
+                {(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).label}
+              </Badge>
+            </div>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label-base">GOC Application Date</label>
+            <input type="date" className="input-base"
+              value={form.gocApplicationDate} onChange={e => setForm(f => ({ ...f, gocApplicationDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">GOC Status</label>
+            <select className="input-base" value={form.gocStatus} onChange={e => setForm(f => ({ ...f, gocStatus: e.target.value }))}>
+              {Object.entries(GOC_STATUS_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+            </select>
+          </div>
+        </div>
+      </EditablePanel>
+    </div>
+  );
+};
+
+// ─── Subsidy Claim Panel (NEW, with prerequisite guard) ──────────────────────
+
+const SubsidyClaimPanel = ({ applicationId, subsidyClaim, gocDetails, qc, can }) => {
+  const [form, setForm] = useState({
+    claimSubmissionDate: '', claimReferenceNumber: '',
+    approvedSubsidyAmount: '', claimApprovalDate: '',
+    disbursementDate: '', claimStatus: 'not-submitted',
+    rejectionReason: '', rejectionDate: '',
+  });
+
+  const canSubmitClaim = useMemo(() => {
+    return gocDetails?.gocStatus === 'approved';
+  }, [gocDetails]);
+
+  useEffect(() => {
+    setForm({
+      claimSubmissionDate:   subsidyClaim?.claimSubmissionDate ? new Date(subsidyClaim.claimSubmissionDate).toISOString().slice(0, 10) : '',
+      claimReferenceNumber:  subsidyClaim?.claimReferenceNumber ?? '',
+      approvedSubsidyAmount: subsidyClaim?.approvedSubsidyAmount ?? '',
+      claimApprovalDate:     subsidyClaim?.claimApprovalDate ? new Date(subsidyClaim.claimApprovalDate).toISOString().slice(0, 10) : '',
+      disbursementDate:      subsidyClaim?.disbursementDate ? new Date(subsidyClaim.disbursementDate).toISOString().slice(0, 10) : '',
+      claimStatus:           subsidyClaim?.claimStatus ?? 'not-submitted',
+      rejectionReason:       subsidyClaim?.rejectionReason ?? '',
+      rejectionDate:         subsidyClaim?.rejectionDate ? new Date(subsidyClaim.rejectionDate).toISOString().slice(0, 10) : '',
+    });
+  }, [subsidyClaim]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidyClaim(applicationId, data),
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Subsidy claim saved'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  return (
+    <div className="space-y-4">
+      {!canSubmitClaim && (
+        <PrerequisiteAlert message="Subsidy claim can only be submitted after GOC is approved." />
+      )}
+      <EditablePanel
+        title="Subsidy Claim"
+        subtitle="Claim submission and disbursement tracking"
+        canEdit={can('subsidies.update') && canSubmitClaim}
+        saving={mutation.isPending}
+        onSave={(close) => {
+          const payload = {
+            ...form,
+            claimSubmissionDate:   form.claimSubmissionDate || undefined,
+            claimApprovalDate:     form.claimApprovalDate || undefined,
+            disbursementDate:      form.disbursementDate || undefined,
+            approvedSubsidyAmount: form.approvedSubsidyAmount || undefined,
+            rejectionDate:         form.rejectionDate || undefined,
+          };
+          mutation.mutate(payload, { onSuccess: close });
+        }}
+        viewContent={
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-gray-400 font-medium">Claim Status</span>
+              <MetaBadge value={subsidyClaim?.claimStatus} meta={CLAIM_META} />
+            </div>
+            <InfoRow label="Reference No." value={subsidyClaim?.claimReferenceNumber} mono />
+            <InfoRow label="Submission Date" value={formatDate(subsidyClaim?.claimSubmissionDate)} />
+            <InfoRow label="Approved Amount" value={subsidyClaim?.approvedSubsidyAmount ? `₹${Number(subsidyClaim.approvedSubsidyAmount).toLocaleString('en-IN')}` : null} />
+            <InfoRow label="Approval Date" value={formatDate(subsidyClaim?.claimApprovalDate)} />
+            <InfoRow label="Disbursement Date" value={formatDate(subsidyClaim?.disbursementDate)} />
+            {subsidyClaim?.claimStatus === 'rejected' && (
+              <>
+                <InfoRow label="Rejection Reason" value={subsidyClaim.rejectionReason} />
+                <InfoRow label="Rejection Date" value={formatDate(subsidyClaim.rejectionDate)} />
+              </>
+            )}
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label-base">Claim Status</label>
+            <select className="input-base" value={form.claimStatus} onChange={e => setForm(f => ({ ...f, claimStatus: e.target.value }))}>
+              {Object.entries(CLAIM_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-base">Reference Number</label>
+            <input className="input-base font-mono" placeholder="Claim ref. no."
+              value={form.claimReferenceNumber} onChange={e => setForm(f => ({ ...f, claimReferenceNumber: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Submission Date</label>
+            <input type="date" className="input-base"
+              value={form.claimSubmissionDate} onChange={e => setForm(f => ({ ...f, claimSubmissionDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Approved Amount (₹)</label>
+            <input type="number" className="input-base"
+              value={form.approvedSubsidyAmount} onChange={e => setForm(f => ({ ...f, approvedSubsidyAmount: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Approval Date</label>
+            <input type="date" className="input-base"
+              value={form.claimApprovalDate} onChange={e => setForm(f => ({ ...f, claimApprovalDate: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label-base">Disbursement Date</label>
+            <input type="date" className="input-base"
+              value={form.disbursementDate} onChange={e => setForm(f => ({ ...f, disbursementDate: e.target.value }))} />
+          </div>
+          {(form.claimStatus === 'rejected') && (
+            <>
+              <div>
+                <label className="label-base">Rejection Date</label>
+                <input type="date" className="input-base"
+                  value={form.rejectionDate} onChange={e => setForm(f => ({ ...f, rejectionDate: e.target.value }))} />
+              </div>
+              <div className="col-span-2">
+                <label className="label-base">Rejection Reason <span className="text-danger-500">*</span></label>
+                <textarea className="input-base resize-none" rows={2} placeholder="Why was the claim rejected?"
+                  value={form.rejectionReason} onChange={e => setForm(f => ({ ...f, rejectionReason: e.target.value }))} />
+              </div>
+            </>
+          )}
+        </div>
+      </EditablePanel>
+    </div>
+  );
+};
+
+// ─── Payment Panel (with prerequisite guard) ──────────────────────────────────
+
+const PaymentPanel = ({ applicationId, paymentDetails, subsidyClaim, qc, can }) => {
   const [form, setForm] = useState({
     paymentReceived: false, paymentAmount: '', paymentDate: '',
     paymentMode: '', transactionReference: '',
   });
+
+  const canMarkReceived = useMemo(() => {
+    return subsidyClaim?.claimStatus === 'disbursed';
+  }, [subsidyClaim]);
 
   useEffect(() => {
     setForm({
@@ -377,7 +874,7 @@ const PaymentPanel = ({ applicationId, paymentDetails, qc, can }) => {
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyPayment(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('Payment details saved'); },
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Payment details saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
@@ -385,9 +882,13 @@ const PaymentPanel = ({ applicationId, paymentDetails, qc, can }) => {
 
   return (
     <div className="space-y-5 max-w-lg">
+      {!canMarkReceived && (
+        <PrerequisiteAlert message="Payment can only be marked as received after subsidy is disbursed." />
+      )}
+
       <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
         <input type="checkbox" id="paymentReceived" className="h-4 w-4 rounded text-primary-600"
-          checked={form.paymentReceived} disabled={!canEdit}
+          checked={form.paymentReceived} disabled={!canEdit || !canMarkReceived}
           onChange={e => setForm(f => ({ ...f, paymentReceived: e.target.checked }))} />
         <label htmlFor="paymentReceived" className="text-sm font-medium text-gray-800 cursor-pointer select-none">
           Payment Received
@@ -447,63 +948,6 @@ const PaymentPanel = ({ applicationId, paymentDetails, qc, can }) => {
   );
 };
 
-// ─── GOC Details Panel ────────────────────────────────────────────────────────
-
-const GocDetailsPanel = ({ applicationId, gocDetails, qc, can }) => {
-  const [form, setForm] = useState({ gocApplicationDate: '', gocStatus: 'not-started' });
-
-  useEffect(() => {
-    setForm({
-      gocApplicationDate: gocDetails?.gocApplicationDate ? new Date(gocDetails.gocApplicationDate).toISOString().slice(0, 10) : '',
-      gocStatus: gocDetails?.gocStatus ?? 'not-started',
-    });
-  }, [gocDetails]);
-
-  const mutation = useMutation({
-    mutationFn: (data) => updateSubsidyGocDetails(applicationId, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['subsidy', applicationId] }); qc.invalidateQueries({ queryKey: ['subsidies'] }); toast.success('GOC details saved'); },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
-  });
-
-  return (
-    <EditablePanel
-      title="GOC Application"
-      subtitle="Government Order Certificate application details"
-      canEdit={can('subsidies.update')}
-      saving={mutation.isPending}
-      onSave={(close) => {
-        const payload = { ...form, gocApplicationDate: form.gocApplicationDate || undefined };
-        mutation.mutate(payload, { onSuccess: close });
-      }}
-      viewContent={
-        <div className="grid grid-cols-2 gap-4">
-          <InfoRow label="GOC Application Date" value={formatDate(gocDetails?.gocApplicationDate)} />
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs text-gray-400 font-medium">GOC Status</span>
-            <Badge color={(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).color}>
-              {(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).label}
-            </Badge>
-          </div>
-        </div>
-      }
-    >
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="label-base">GOC Application Date</label>
-          <input type="date" className="input-base"
-            value={form.gocApplicationDate} onChange={e => setForm(f => ({ ...f, gocApplicationDate: e.target.value }))} />
-        </div>
-        <div>
-          <label className="label-base">GOC Status</label>
-          <select className="input-base" value={form.gocStatus} onChange={e => setForm(f => ({ ...f, gocStatus: e.target.value }))}>
-            {Object.entries(GOC_STATUS_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
-          </select>
-        </div>
-      </div>
-    </EditablePanel>
-  );
-};
-
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 
 const SCHEME_TABS = [
@@ -538,8 +982,10 @@ const FilterBar = ({ filters, onChange, onClear }) => {
           </div>
           {[
             { key: 'nhbPortalStatus', label: 'NHB Portal Status', options: Object.entries(NHB_PORTAL_META).map(([v, m]) => ({ value: v, label: m.label })) },
-            { key: 'bankVerificationStatus', label: 'Bank Verification', options: Object.entries(VERIFY_META).map(([v, m]) => ({ value: v, label: m.label })) },
+            { key: 'gocBankVerificationStatus', label: 'GOC Bank Verification', options: Object.entries(VERIFY_META).map(([v, m]) => ({ value: v, label: m.label })) },
             { key: 'geoTaggingStatus', label: 'Geo-Tagging', options: Object.entries(VERIFY_META).map(([v, m]) => ({ value: v, label: m.label })) },
+            { key: 'sanctionStatus', label: 'Bank Sanction', options: Object.entries(SANCTION_META).map(([v, m]) => ({ value: v, label: m.label })) },
+            { key: 'claimStatus', label: 'Subsidy Claim', options: Object.entries(CLAIM_META).map(([v, m]) => ({ value: v, label: m.label })) },
             { key: 'paymentReceived', label: 'Payment', options: [{ value: 'true', label: 'Received' }, { value: 'false', label: 'Not Received' }] },
           ].map(({ key, label, options }) => (
             <div key={key}>
@@ -782,8 +1228,7 @@ const Subsidies = () => {
   const statusMutation = useMutation({
     mutationFn: (data) => updateSubsidyStatus(detailApp._id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['subsidy', detailApp._id] });
-      qc.invalidateQueries({ queryKey: ['subsidies'] });
+      invalidateBoth(qc, detailApp._id);
       toast.success('Status updated');
       setStatusModal(false);
     },
@@ -810,17 +1255,59 @@ const Subsidies = () => {
     setPage(1);
   };
 
+  // ── Current status options (enum from model) ──────────────────────────────
+  const SUBSIDY_STATUS_OPTIONS = [
+    'Documentation In Progress', 'Documentation Completed',
+    'Loan Preparation', 'File Submitted to Bank', 'Under Bank Review',
+    'Bank Loan Sanctioned', 'Bank Loan Rejected',
+    'GOC Application Submitted', 'GOC Processing', 'GOC Approved', 'GOC Rejected',
+    'Subsidy Claim Submitted', 'Subsidy Claim Approved', 'Subsidy Claim Rejected',
+    'Subsidy Disbursed', 'Payment Received', 'Completed', 'Rejected',
+  ];
+
   // ── Detail View ─────────────────────────────────────────────────────────────
   if (detailApp && app) {
     const days = daysAgo(app.applicationDate);
-    const isNhb = app.schemeType === 'nhb';
+    const isNhb = app.schemeType?.toLowerCase() === 'nhb';
+
+    // ── Rejection detection ───────────────────────────────────────────────
+    const sanctionRejected = app.bankLoanSanction?.sanctionStatus === 'rejected';
+    const gocRejected      = app.gocDetails?.gocStatus === 'rejected';
+    const claimRejected    = app.subsidyClaim?.claimStatus === 'rejected';
+    const isRejected       = sanctionRejected || gocRejected || claimRejected;
+
+    const rejectionMessage = sanctionRejected
+      ? `Case closed — Bank loan was rejected${app.bankLoanSanction?.rejectionReason ? `: ${app.bankLoanSanction.rejectionReason}` : ''}`
+      : gocRejected
+        ? 'Case closed — GOC application was rejected'
+        : claimRejected
+          ? `Case closed — Subsidy claim was rejected${app.subsidyClaim?.rejectionReason ? `: ${app.subsidyClaim.rejectionReason}` : ''}`
+          : null;
+
+    // Days in current stage
+    const daysInStage = app.lastStatusChangeDate
+      ? Math.floor((Date.now() - new Date(app.lastStatusChangeDate).getTime()) / (1000 * 60 * 60 * 24))
+      : days;
+
+    // Tabs disabled after rejection point
+    const disabledTabs = new Set();
+    if (sanctionRejected) {
+      ['goc-details', 'goc-creds', 'verification', 'claim', 'payment'].forEach(t => disabledTabs.add(t));
+    } else if (gocRejected) {
+      ['claim', 'payment'].forEach(t => disabledTabs.add(t));
+    } else if (claimRejected) {
+      disabledTabs.add('payment');
+    }
 
     const tabs = [
       { id: 'info',         label: 'Info' },
+      { id: 'loan-prep',    label: 'Loan Prep' },
+      { id: 'bank-loan',    label: 'Bank Loan' },
       ...(isNhb ? [{ id: 'nhb', label: 'NHB Details' }] : []),
       { id: 'goc-details',  label: 'GOC' },
       { id: 'goc-creds',    label: 'GOC Portal' },
       { id: 'verification', label: 'Verification' },
+      { id: 'claim',        label: 'Subsidy Claim' },
       { id: 'payment',      label: 'Payment' },
       { id: 'documents',    label: 'Documents' },
       { id: 'queries',      label: `Queries (${app.queries?.length ?? 0})` },
@@ -845,13 +1332,14 @@ const Subsidies = () => {
         </div>
 
         {/* Stats Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
           {[
             { label: 'Subsidy Amount',    value: app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—' },
             { label: 'Project Cost',      value: app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—' },
             { label: 'Days in Process',   value: `${days} days` },
-            { label: 'Bank Verification', value: <VerificationBadge value={app.bankVerificationStatus} /> },
-            { label: 'Geo-Tagging',       value: <VerificationBadge value={app.geoTaggingStatus} /> },
+            { label: 'Days in Stage',     value: <span className={daysInStage > 15 ? 'text-red-600' : daysInStage > 7 ? 'text-yellow-600' : 'text-green-600'}>{daysInStage}d</span> },
+            { label: 'Bank Sanction',     value: <MetaBadge value={app.bankLoanSanction?.sanctionStatus} meta={SANCTION_META} /> },
+            { label: 'Claim Status',      value: <MetaBadge value={app.subsidyClaim?.claimStatus} meta={CLAIM_META} /> },
           ].map((s) => (
             <div key={s.label} className="card p-3 text-center">
               <p className="text-xs text-gray-400">{s.label}</p>
@@ -860,17 +1348,31 @@ const Subsidies = () => {
           ))}
         </div>
 
+        {/* Rejection Banner */}
+        {isRejected && (
+          <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-red-800">🚫 {rejectionMessage}</p>
+              <p className="text-xs text-red-600 mt-1">Downstream steps have been locked.</p>
+            </div>
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="border-b border-gray-200">
           <div className="flex overflow-x-auto">
             {tabs.map((t) => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)}
+              <button key={t.id} onClick={() => !disabledTabs.has(t.id) && setActiveTab(t.id)}
                 className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  activeTab === t.id
-                    ? 'border-primary-600 text-primary-700'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                  disabledTabs.has(t.id)
+                    ? 'border-transparent text-gray-300 cursor-not-allowed'
+                    : activeTab === t.id
+                      ? 'border-primary-600 text-primary-700'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}>
                 {t.label}
+                {disabledTabs.has(t.id) && <span className="ml-1 text-red-400">🔒</span>}
               </button>
             ))}
           </div>
@@ -913,6 +1415,25 @@ const Subsidies = () => {
             </div>
           )}
 
+          {/* LOAN PREPARATION (NEW) */}
+          {activeTab === 'loan-prep' && (
+            <LoanPreparationPanel
+              applicationId={app._id ?? detailApp._id}
+              loanPreparation={app.loanPreparation}
+              qc={qc} can={can}
+            />
+          )}
+
+          {/* BANK LOAN (NEW: submission + sanction) */}
+          {activeTab === 'bank-loan' && (
+            <BankLoanPanel
+              applicationId={app._id ?? detailApp._id}
+              bankSubmission={app.bankSubmission}
+              bankLoanSanction={app.bankLoanSanction}
+              qc={qc} can={can}
+            />
+          )}
+
           {/* NHB DETAILS (conditional) */}
           {activeTab === 'nhb' && isNhb && (
             <NhbDetailsPanel
@@ -922,11 +1443,12 @@ const Subsidies = () => {
             />
           )}
 
-          {/* GOC DETAILS */}
+          {/* GOC DETAILS (with prerequisite) */}
           {activeTab === 'goc-details' && (
             <GocDetailsPanel
               applicationId={app._id ?? detailApp._id}
               gocDetails={app.gocDetails}
+              bankLoanSanction={app.bankLoanSanction}
               qc={qc} can={can}
             />
           )}
@@ -948,11 +1470,22 @@ const Subsidies = () => {
             />
           )}
 
-          {/* PAYMENT */}
+          {/* SUBSIDY CLAIM (NEW, with prerequisite) */}
+          {activeTab === 'claim' && (
+            <SubsidyClaimPanel
+              applicationId={app._id ?? detailApp._id}
+              subsidyClaim={app.subsidyClaim}
+              gocDetails={app.gocDetails}
+              qc={qc} can={can}
+            />
+          )}
+
+          {/* PAYMENT (with prerequisite) */}
           {activeTab === 'payment' && (
             <PaymentPanel
               applicationId={app._id ?? detailApp._id}
               paymentDetails={app.paymentDetails}
+              subsidyClaim={app.subsidyClaim}
               qc={qc} can={can}
             />
           )}
@@ -990,7 +1523,7 @@ const Subsidies = () => {
               {(app.timeline ?? []).map((entry, i) => (
                 <div key={i} className="flex gap-4 relative">
                   <div className="relative z-10 shrink-0 h-10 w-10 rounded-full bg-white border-2 border-gray-200 flex items-center justify-center text-base">
-                    {{ 'status-change': '🔄', 'document-update': '📄', query: '❓', note: '📝', 'portal-update': '🌐', 'verification-update': '✅', 'payment-update': '💰', assignment: '👤' }[entry.activityType] || '📌'}
+                    {{ 'status-change': '🔄', 'document-update': '📄', query: '❓', note: '📝', 'portal-update': '🌐', 'verification-update': '✅', 'payment-update': '💰', assignment: '👤', 'loan-update': '🏦', 'claim-update': '📋' }[entry.activityType] || '📌'}
                   </div>
                   <div className="flex-1 bg-gray-50 rounded-xl p-3">
                     <p className="text-sm font-medium text-gray-800">{entry.activity}</p>
@@ -1005,14 +1538,27 @@ const Subsidies = () => {
           {/* STATUS */}
           {activeTab === 'status' && (
             <Card header="Change Status">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 mb-2">Current</p>
-                  <StatusBadge status={app.currentStatus} size="lg" />
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-500 mb-2">Current</p>
+                    <StatusBadge status={app.currentStatus} size="lg" />
+                  </div>
+                  {can('subsidies.update') && (
+                    <Button onClick={() => setStatusModal(true)}>Manual Override</Button>
+                  )}
                 </div>
-                {can('subsidies.update') && (
-                  <Button onClick={() => setStatusModal(true)}>Change Status</Button>
+                {app.lastStatusChangeDate && (
+                  <p className="text-xs text-gray-400">
+                    In this stage for <span className={`font-semibold ${daysInStage > 15 ? 'text-red-600' : daysInStage > 7 ? 'text-yellow-600' : 'text-green-600'}`}>{daysInStage} days</span>
+                    {' · '}since {formatDate(app.lastStatusChangeDate)}
+                  </p>
                 )}
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                  <p className="text-xs text-blue-500 font-medium mb-1">💡 Auto-Suggested Status (based on sub-document states)</p>
+                  <p className="text-sm font-semibold text-blue-800">{app.currentStatus}</p>
+                  <p className="text-xs text-blue-400 mt-1">Status auto-syncs when you update tabs. Manual override is available above.</p>
+                </div>
               </div>
             </Card>
           )}
@@ -1025,7 +1571,7 @@ const Subsidies = () => {
               <label className="label-base">New Status<span className="text-danger-500 ml-0.5">*</span></label>
               <select className="input-base" {...regStatus('status', { required: true })}>
                 <option value="">Select…</option>
-                {configStore.subsidyStatuses.map(s => <option key={s._id} value={s.label}>{s.label}</option>)}
+                {SUBSIDY_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
             <div>
@@ -1050,16 +1596,14 @@ const Subsidies = () => {
     { key: 'client',        label: 'Client',  render: (row) => row.clientId?.name ?? '—' },
     { key: 'appDate',       label: 'File Date', render: (row) => formatDate(row.applicationDate) },
     { key: 'vendor',        label: 'Vendor',  render: (row) => row.clientId?.vendorId?.vendorName ?? <span className="text-gray-300">Direct</span> },
-    { key: 'bank',          label: 'Bank',    render: (row) => row.clientId?.bankName ?? '—' },
-    { key: 'branch',        label: 'Branch',  render: (row) => row.clientId?.branchName ?? '—' },
     { key: 'scheme',        label: 'Scheme',  render: (row) => <SchemeBadge value={row.schemeType} /> },
     { key: 'status',        label: 'Status',  render: (row) => <StatusBadge status={row.currentStatus} /> },
     ...(isNhbActive ? [
       { key: 'nhbId',       label: 'NHB ID',  render: (row) => <span className="font-mono text-xs">{row.nhbDetails?.nhbId || '—'}</span> },
       { key: 'nhbStatus',   label: 'NHB Portal', render: (row) => <NHBStatusBadge value={row.nhbDetails?.nhbPortalStatus} /> },
     ] : []),
-    { key: 'bankVerif',     label: 'Bank Verif.', render: (row) => <VerificationBadge value={row.bankVerificationStatus} /> },
-    { key: 'geoTag',        label: 'Geo-Tag',     render: (row) => <VerificationBadge value={row.geoTaggingStatus} /> },
+    { key: 'sanction',      label: 'Sanction',    render: (row) => <MetaBadge value={row.bankLoanSanction?.sanctionStatus} meta={SANCTION_META} /> },
+    { key: 'claim',         label: 'Claim',       render: (row) => <MetaBadge value={row.subsidyClaim?.claimStatus} meta={CLAIM_META} /> },
     {
       key: 'payment',       label: 'Payment',
       render: (row) => row.paymentDetails?.paymentReceived
@@ -1133,7 +1677,7 @@ const Subsidies = () => {
         emptyActionLabel="New Application"
       />
 
-      {/* Create Modal */}
+      {/* Create Modal — MINIMAL */}
       <Modal isOpen={formOpen} onClose={() => setFormOpen(false)} title="New Subsidy Application" size="lg">
         <form onSubmit={hsCreate(d => createMutation.mutate(d))} className="space-y-5">
           <div>
@@ -1147,26 +1691,13 @@ const Subsidies = () => {
           <div className="grid grid-cols-2 gap-4">
             <Input label="Scheme Name" required {...regCreate('schemeName', { required: true })} />
             <div>
-              <label className="label-base">Scheme Type</label>
+              <label className="label-base">Scheme Type<span className="text-danger-500 ml-0.5">*</span></label>
               <select className="input-base" {...regCreate('schemeType')}>
                 <option value="none">None</option>
                 <option value="nhb">NHB</option>
                 <option value="general">General</option>
                 <option value="aif">AIF</option>
               </select>
-            </div>
-            <Input label="Department Name" {...regCreate('departmentName')} />
-            <div>
-              <label className="label-base">Subsidy Amount Applied (₹)</label>
-              <input type="number" className="input-base" {...regCreate('subsidyAmountApplied')} />
-            </div>
-            <div>
-              <label className="label-base">Project Cost (₹)</label>
-              <input type="number" className="input-base" {...regCreate('projectCost')} />
-            </div>
-            <div>
-              <label className="label-base">Subsidy %</label>
-              <input type="number" className="input-base" {...regCreate('subsidyPercentage')} />
             </div>
             <Input label="File Receive Date" type="date"
               defaultValue={new Date().toISOString().slice(0, 10)}
@@ -1178,30 +1709,6 @@ const Subsidies = () => {
               </select>
             </div>
           </div>
-
-          {/* NHB-specific fields (conditional) */}
-          {watchSchemeType === 'nhb' && (
-            <div className="rounded-xl border border-green-100 bg-green-50 p-4 space-y-4">
-              <p className="text-sm font-semibold text-green-800">NHB Portal Details</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="label-base">NHB ID</label>
-                  <input className="input-base font-mono" placeholder="NHB portal user ID"
-                    {...regCreate('nhbDetails.nhbId')} />
-                </div>
-                <div>
-                  <label className="label-base">NHB Password</label>
-                  <input type="password" className="input-base"
-                    {...regCreate('nhbDetails.nhbPassword')} />
-                </div>
-                <div className="col-span-2">
-                  <label className="label-base">NHB Project Code</label>
-                  <input className="input-base font-mono" placeholder="e.g. NHB-2026-1234"
-                    {...regCreate('nhbDetails.nhbProjectCode')} />
-                </div>
-              </div>
-            </div>
-          )}
 
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setFormOpen(false)} type="button">Cancel</Button>
