@@ -84,7 +84,7 @@ const createBankLoanValidation = [
 const createSubsidyValidation = [
   body('clientId').isMongoId().withMessage('Valid clientId is required'),
   body('schemeName').trim().isLength({ min: 3, max: 200 }).withMessage('schemeName must be 3-200 characters'),
-  body('subsidyAmountApplied').isFloat({ min: 0 }).withMessage('subsidyAmountApplied must be a positive number'),
+  body('subsidyAmountApplied').optional({ checkFalsy: true }).isFloat({ min: 0 }).withMessage('subsidyAmountApplied must be a positive number'),
   body('applicationDate').optional().isISO8601().withMessage('applicationDate must be a valid date'),
   validate,
 ];
