@@ -1702,6 +1702,8 @@ const Subsidies = () => {
             <Input label="File Receive Date" type="date"
               defaultValue={new Date().toISOString().slice(0, 10)}
               {...regCreate('applicationDate')} />
+            <Input label="Subsidy Applied (₹)" type="number" step="any"
+              {...regCreate('subsidyAmountApplied')} />
             <div>
               <label className="label-base">Priority</label>
               <select className="input-base" {...regCreate('priority')}>
