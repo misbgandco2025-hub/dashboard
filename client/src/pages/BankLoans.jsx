@@ -702,11 +702,13 @@ const AssignPanel = ({ applicationId, currentAssignee, qc, can }) => {
               disabled={!canEdit || isLoading}
             >
               <option value="">Unassigned</option>
-              {(usersData ?? []).map((u) => (
-                <option key={u._id} value={u._id}>
-                  {u.fullName} (@{u.username})
-                </option>
-              ))}
+              {(usersData ?? [])
+                .filter((u) => u.role !== 'viewer')
+                .map((u) => (
+                  <option key={u._id} value={u._id}>
+                    {u.fullName} (@{u.username})
+                  </option>
+                ))}
             </select>
           </div>
           {canEdit && (
