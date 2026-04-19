@@ -649,12 +649,77 @@ const BankLoanDetail = ({ application, onBack }) => {
                 )}
               </div>
             </Card>
+
+            <AssignPanel
+              applicationId={app._id}
+              currentAssignee={app.assignedTo}
+              qc={qc}
+              can={can}
+            />
           </div>
         )}
       </div>
 
       <StatusUpdateModal isOpen={statusModal} onClose={() => setStatusModal(false)} application={app} statuses={statuses} />
     </div>
+  );
+};
+
+// ─── Assignment Panel Component ────────────────────────────────────────────────
+
+const AssignPanel = ({ applicationId, currentAssignee, qc, can }) => {
+  const [selectedUser, setSelectedUser] = useState(currentAssignee?._id || '');
+
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ['users', { limit: 100 }],
+    queryFn: () => getUsers({ limit: 100 }),
+    select: (res) => res.data.data,
+  });
+
+  const mutation = useMutation({
+    mutationFn: (data) => assignBankLoan(applicationId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank-loan', applicationId] });
+      qc.invalidateQueries({ queryKey: ['bank-loans'] });
+      toast.success('Application assigned successfully');
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Assignment failed'),
+  });
+
+  const canEdit = can('bankLoans.update');
+
+  return (
+    <Card header="Assign Staff">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">Pick a staff member to handle this application.</p>
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <select
+              className="input-base"
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+              disabled={!canEdit || isLoading}
+            >
+              <option value="">Unassigned</option>
+              {(usersData ?? []).map((u) => (
+                <option key={u._id} value={u._id}>
+                  {u.fullName} (@{u.username})
+                </option>
+              ))}
+            </select>
+          </div>
+          {canEdit && (
+            <Button
+              loading={mutation.isPending}
+              onClick={() => mutation.mutate({ assignedTo: selectedUser })}
+              disabled={isLoading}
+            >
+              Assign
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 };
 
