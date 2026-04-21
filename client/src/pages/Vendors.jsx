@@ -41,7 +41,14 @@ const VendorForm = ({ vendor, onSuccess, onClose }) => {
       toast.success(`Vendor ${isEdit ? 'updated' : 'created'} successfully`);
       onSuccess?.();
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save vendor'),
+    onError: (e) => {
+      const apiErrors = e.response?.data?.errors;
+      if (apiErrors && apiErrors.length > 0) {
+        apiErrors.forEach(err => toast.error(`${err.field ? err.field ? err.field + ': ' : '' : ''}${err.message}`, { duration: 5000 }));
+      } else {
+        toast.error(e.response?.data?.message || 'Failed to save vendor');
+      }
+    },
   });
 
   return (
