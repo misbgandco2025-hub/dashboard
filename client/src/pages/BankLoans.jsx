@@ -647,6 +647,7 @@ const BankLoanDetail = ({ application, onBack }) => {
                   <Button onClick={() => setStatusModal(true)}>Change Status</Button>
                 )}
               </div>
+            </Card>
           </div>
         )}
       </div>
