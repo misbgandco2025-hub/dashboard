@@ -37,11 +37,6 @@ const getApplications = async (req, res, next) => {
       if (req.query.to) filter.applicationDate.$lte = new Date(req.query.to);
     }
 
-    // DATA ENTRY: see assigned applications AND their own created ones
-    if (req.user.role === 'data-entry') {
-      filter.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
-    }
-
     const [apps, total] = await Promise.all([
       BankLoanApplication.find(filter)
         .populate('clientId', 'clientId name mobile')
@@ -114,10 +109,9 @@ const getApplicationById = async (req, res, next) => {
 const updateApplication = async (req, res, next) => {
   try {
     const filter = { _id: req.params.id, isDeleted: false };
-    if (req.user.role === 'data-entry') filter.assignedTo = req.user._id;
-
+    
     const app = await BankLoanApplication.findOne(filter);
-    if (!app) return next(ApiError.notFound('Application not found or not assigned to you.'));
+    if (!app) return next(ApiError.notFound('Application not found.'));
 
     const allowedFields = ['loanAmount', 'loanScheme', 'loanType', 'bankRefNumber', 'currentStage',
       'applicationSubmissionDate', 'approvalDate', 'disbursementDate', 'priority'];
@@ -153,8 +147,7 @@ const updateStatus = async (req, res, next) => {
     if (!status) return next(ApiError.badRequest('Status is required.'));
 
     const filter = { _id: req.params.id, isDeleted: false };
-    if (req.user.role === 'data-entry') filter.assignedTo = req.user._id;
-
+    
     const app = await BankLoanApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
