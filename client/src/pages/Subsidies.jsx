@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Eye, Trash2, ChevronRight, Filter, X, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Trash2, ChevronRight, Filter, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
 
@@ -1622,13 +1622,11 @@ const Subsidies = () => {
       key: 'actions', label: '', sortable: false, tdClassName: 'text-right',
       render: (row) => (
         <div className="flex items-center gap-1 justify-end">
-          <button onClick={() => { setDetailApp(row); setActiveTab('info'); }}
-            className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
-            <Eye className="h-4 w-4" />
-          </button>
           {can('subsidies.delete') && (
-            <button onClick={() => setDeleteTarget(row)}
-              className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg">
+            <button
+              onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }}
+              className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"
+            >
               <Trash2 className="h-4 w-4" />
             </button>
           )}
@@ -1682,6 +1680,7 @@ const Subsidies = () => {
         emptyDescription="Create a new subsidy application to get started."
         emptyAction={can('subsidies.create') ? () => setFormOpen(true) : undefined}
         emptyActionLabel="New Application"
+        onRowClick={(row) => { setDetailApp(row); setActiveTab('info'); }}
       />
 
       {/* Create Modal — MINIMAL */}
