@@ -1,12 +1,12 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Building2, Landmark, HandCoins,
-  BarChart3, Settings2, UserCog, X, ChevronRight,
+  BarChart3, Settings2, UserCog, Receipt, X, ChevronRight,
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { getNavItems } from '../../utils/permissions';
 
-const iconMap = { LayoutDashboard, Users, Building2, Landmark, HandCoins, BarChart3, Settings2, UserCog };
+const iconMap = { LayoutDashboard, Users, Building2, Landmark, HandCoins, BarChart3, Settings2, UserCog, Receipt };
 
 const Sidebar = ({ isOpen, onClose }) => {
   const user = useAuthStore((s) => s.user);
