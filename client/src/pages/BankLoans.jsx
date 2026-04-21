@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Eye, Edit2, Trash2, ChevronRight } from 'lucide-react';
+import { Plus, Search, Trash2, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
@@ -732,11 +732,12 @@ const BankLoans = () => {
       key: 'actions', label: '', sortable: false, tdClassName: 'text-right',
       render: (row) => (
         <div className="flex items-center gap-1 justify-end">
-          <button onClick={() => setDetailApp(row)} className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="View">
-            <Eye className="h-4 w-4" />
-          </button>
           {can('bankLoans.delete') && (
-            <button onClick={() => setDeleteTarget(row)} className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg" title="Delete">
+            <button
+              onClick={(e) => { e.stopPropagation(); setDeleteTarget(row); }}
+              className="p-1.5 text-gray-400 hover:text-danger-600 hover:bg-danger-50 rounded-lg"
+              title="Delete"
+            >
               <Trash2 className="h-4 w-4" />
             </button>
           )}
@@ -765,6 +766,7 @@ const BankLoans = () => {
         emptyTitle="No bank loan applications" emptyDescription="Create a new application to get started."
         emptyAction={can('bankLoans.create') ? () => setFormOpen(true) : undefined}
         emptyActionLabel="New Application"
+        onRowClick={(row) => setDetailApp(row)}
       />
 
       {/* Create Form Modal */}
