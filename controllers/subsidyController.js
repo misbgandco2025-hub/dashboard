@@ -89,10 +89,6 @@ const getApplications = async (req, res, next) => {
       filter['paymentDetails.paymentReceived'] = req.query.paymentReceived === 'true';
     }
 
-    // DATA ENTRY: see only assigned or self-created
-    if (req.user.role === 'data-entry') {
-      filter.$or = [{ assignedTo: req.user._id }, { createdBy: req.user._id }];
-    }
 
     const [apps, total] = await Promise.all([
       SubsidyApplication.find(filter)
@@ -170,8 +166,7 @@ const getApplicationById = async (req, res, next) => {
 const updateApplication = async (req, res, next) => {
   try {
     const filter = { _id: req.params.id, isDeleted: false };
-    if (req.user.role === 'data-entry') filter.assignedTo = req.user._id;
-
+    
     const app = await SubsidyApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
@@ -448,8 +443,7 @@ const updateStatus = async (req, res, next) => {
     if (!status) return next(ApiError.badRequest('Status is required.'));
 
     const filter = { _id: req.params.id, isDeleted: false };
-    if (req.user.role === 'data-entry') filter.assignedTo = req.user._id;
-
+    
     const app = await SubsidyApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
