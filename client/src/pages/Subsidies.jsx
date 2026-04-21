@@ -1234,7 +1234,7 @@ const Subsidies = () => {
     },
   });
 
-  const { register: regCreate, handleSubmit: hsCreate, reset: resetCreate, watch: watchCreate } = useForm();
+  const { register: regCreate, handleSubmit: hsCreate, reset: resetCreate, watch: watchCreate, formState: { errors: createErrors } } = useForm();
   const { register: regStatus, handleSubmit: hsStatus } = useForm();
 
   const createMutation = useMutation({
@@ -1245,7 +1245,14 @@ const Subsidies = () => {
       resetCreate();
       setFormOpen(false);
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+    onError: (e) => {
+      const apiErrors = e.response?.data?.errors;
+      if (apiErrors && apiErrors.length > 0) {
+        apiErrors.forEach(err => toast.error(`${err.field ? err.field + ': ' : ''}${err.message}`, { duration: 5000 }));
+      } else {
+        toast.error(e.response?.data?.message || 'Create failed');
+      }
+    },
   });
 
   const watchSchemeType = watchCreate('schemeType');
@@ -1682,14 +1689,21 @@ const Subsidies = () => {
         <form onSubmit={hsCreate(d => createMutation.mutate(d))} className="space-y-5">
           <div>
             <label className="label-base">Client<span className="text-danger-500 ml-0.5">*</span></label>
-            <select className="input-base" {...regCreate('clientId', { required: true })}>
+            <select className={`input-base ${createErrors.clientId ? 'input-error' : ''}`} {...regCreate('clientId', { required: 'Client is required' })}>
               <option value="">Select client…</option>
               {(clientsData ?? []).map(c => <option key={c._id} value={c._id}>{c.name} — {c.clientId}</option>)}
             </select>
+            {createErrors.clientId && <p className="mt-1 text-xs text-danger-600">{createErrors.clientId.message}</p>}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Scheme Name" required {...regCreate('schemeName', { required: true })} />
+            <div>
+              <label className="label-base">Scheme Name<span className="text-danger-500 ml-0.5">*</span></label>
+              <input className={`input-base ${createErrors.schemeName ? 'input-error' : ''}`}
+                placeholder="e.g. PMAY-G, NABARD..."
+                {...regCreate('schemeName', { required: 'Scheme name is required', minLength: { value: 3, message: 'Min 3 characters required' } })} />
+              {createErrors.schemeName && <p className="mt-1 text-xs text-danger-600">{createErrors.schemeName.message}</p>}
+            </div>
             <div>
               <label className="label-base">Scheme Type<span className="text-danger-500 ml-0.5">*</span></label>
               <select className="input-base" {...regCreate('schemeType')}>
@@ -1699,11 +1713,20 @@ const Subsidies = () => {
                 <option value="aif">AIF</option>
               </select>
             </div>
-            <Input label="File Receive Date" type="date"
-              defaultValue={new Date().toISOString().slice(0, 10)}
-              {...regCreate('applicationDate')} />
-            <Input label="Subsidy Applied (₹)" type="number" step="any"
-              {...regCreate('subsidyAmountApplied')} />
+            <div>
+              <label className="label-base">File Receive Date</label>
+              <input type="date" className={`input-base ${createErrors.applicationDate ? 'input-error' : ''}`}
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                {...regCreate('applicationDate', { validate: v => !v || !isNaN(Date.parse(v)) || 'Enter a valid date (YYYY-MM-DD)' })} />
+              {createErrors.applicationDate && <p className="mt-1 text-xs text-danger-600">{createErrors.applicationDate.message}</p>}
+            </div>
+            <div>
+              <label className="label-base">Subsidy Applied (₹)</label>
+              <input type="number" step="any" className={`input-base ${createErrors.subsidyAmountApplied ? 'input-error' : ''}`}
+                placeholder="0"
+                {...regCreate('subsidyAmountApplied', { min: { value: 0, message: 'Amount must be positive' } })} />
+              {createErrors.subsidyAmountApplied && <p className="mt-1 text-xs text-danger-600">{createErrors.subsidyAmountApplied.message}</p>}
+            </div>
             <div>
               <label className="label-base">Priority</label>
               <select className="input-base" {...regCreate('priority')}>
