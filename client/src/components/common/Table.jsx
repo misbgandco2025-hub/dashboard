@@ -18,6 +18,7 @@ const Table = ({
   emptyDescription = '',
   emptyAction,
   emptyActionLabel,
+  onRowClick,
 }) => {
   const handleSort = (key) => {
     if (!onSort) return;
@@ -63,7 +64,11 @@ const Table = ({
               </tr>
             ) : (
               data.map((row, i) => (
-                <tr key={row._id || i} className="hover:bg-gray-50 transition-colors">
+                <tr
+                  key={row._id || i}
+                  className={`hover:bg-gray-50 transition-colors ${onRowClick ? 'cursor-pointer' : ''}`}
+                  onClick={() => onRowClick?.(row)}
+                >
                   {columns.map((col) => (
                     <td key={col.key} className={`table-td ${col.tdClassName || ''}`}>
                       {col.render ? col.render(row) : row[col.key] ?? '—'}
