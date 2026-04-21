@@ -768,7 +768,7 @@ const BankLoans = () => {
     onError: (e) => toast.error(e.response?.data?.message || 'Delete failed'),
   });
 
-  const { register, handleSubmit, reset } = useForm();
+  const { register, handleSubmit, reset, formState: { errors: createErrors } } = useForm();
 
   const createMutation = useMutation({
     mutationFn: (data) => createBankLoan(data),
@@ -778,7 +778,14 @@ const BankLoans = () => {
       reset();
       setFormOpen(false);
     },
-    onError: (e) => toast.error(e.response?.data?.message || 'Create failed'),
+    onError: (e) => {
+      const apiErrors = e.response?.data?.errors;
+      if (apiErrors && apiErrors.length > 0) {
+        apiErrors.forEach(err => toast.error(`${err.field ? err.field + ': ' : ''}${err.message}`, { duration: 5000 }));
+      } else {
+        toast.error(e.response?.data?.message || 'Create failed');
+      }
+    },
   });
 
   if (detailApp) return <BankLoanDetail application={detailApp} onBack={() => setDetailApp(null)} />;
@@ -835,18 +842,27 @@ const BankLoans = () => {
         <form onSubmit={handleSubmit((d) => createMutation.mutate(d))} className="space-y-4">
           <div>
             <label className="label-base">Client<span className="text-danger-500 ml-0.5">*</span></label>
-            <select className="input-base" {...register('clientId', { required: true })}>
+            <select className={`input-base ${createErrors.clientId ? 'input-error' : ''}`} {...register('clientId', { required: 'Client is required' })}>
               <option value="">Select client...</option>
               {(clientsData ?? []).map((c) => <option key={c._id} value={c._id}>{c.name} — {c.clientId}</option>)}
             </select>
+            {createErrors.clientId && <p className="mt-1 text-xs text-danger-600">{createErrors.clientId.message}</p>}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label-base">Loan Amount (₹)<span className="text-danger-500 ml-0.5">*</span></label>
-              <input type="number" className="input-base" placeholder="5000000" {...register('loanAmount', { required: true })} />
+              <input type="number" className={`input-base ${createErrors.loanAmount ? 'input-error' : ''}`} placeholder="5000000"
+                {...register('loanAmount', { required: 'Loan amount is required', min: { value: 0, message: 'Amount must be positive' } })} />
+              {createErrors.loanAmount && <p className="mt-1 text-xs text-danger-600">{createErrors.loanAmount.message}</p>}
             </div>
             <Input label="Loan Scheme / Type" {...register('loanScheme')} />
-            <Input label="Application Date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} {...register('applicationDate')} />
+            <div>
+              <label className="label-base">Application Date</label>
+              <input type="date" className={`input-base ${createErrors.applicationDate ? 'input-error' : ''}`}
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                {...register('applicationDate', { validate: v => !v || !isNaN(Date.parse(v)) || 'Enter a valid date (YYYY-MM-DD)' })} />
+              {createErrors.applicationDate && <p className="mt-1 text-xs text-danger-600">{createErrors.applicationDate.message}</p>}
+            </div>
             <div>
               <label className="label-base">Priority</label>
               <select className="input-base" {...register('priority')}>
