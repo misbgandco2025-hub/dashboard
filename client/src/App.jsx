@@ -17,6 +17,7 @@ import Users from './pages/Users';
 import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import NotFound from './pages/NotFound';
+import Fees from './pages/Fees';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -67,6 +68,14 @@ const App = () => (
           />
           <Route path="profile" element={<Profile />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route
+            path="fees/*"
+            element={
+              <ProtectedRoute requiredPage="fees">
+                <Fees />
+              </ProtectedRoute>
+            }
+          />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
