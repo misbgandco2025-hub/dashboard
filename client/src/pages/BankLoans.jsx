@@ -8,10 +8,9 @@ import { useForm } from 'react-hook-form';
 import {
   getBankLoans, getBankLoanById, createBankLoan, updateBankLoan, deleteBankLoan,
   updateBankLoanStatus, updateDocumentChecklist, addQuery, updateQuery,
-  addTimelineEntry, assignBankLoan, updateAifCredentials,
+  addTimelineEntry, updateAifCredentials,
 } from '../services/bankLoanService';
 import { getClients } from '../services/clientService';
-import { getUsers } from '../services/userService';
 import useAuth from '../hooks/useAuth';
 import useDebounce from '../hooks/useDebounce';
 import usePageTitle from '../hooks/usePageTitle';
@@ -545,7 +544,7 @@ const BankLoanDetail = ({ application, onBack }) => {
     { id: 'documents', label: `Documents (${app.documentChecklist?.length ?? '…'})` },
     { id: 'queries', label: `Queries (${app.queries?.length ?? 0})` },
     { id: 'timeline', label: 'Timeline' },
-    { id: 'status', label: 'Status & Assign' },
+    { id: 'status', label: 'Status' },
   ];
 
   return (
@@ -573,7 +572,6 @@ const BankLoanDetail = ({ application, onBack }) => {
           { label: 'Loan Amount', value: app.loanAmount ? `₹${Number(app.loanAmount).toLocaleString('en-IN')}` : '—' },
           { label: 'Days in Process', value: `${days} days` },
           { label: 'Priority', value: <Badge color={PRIORITY_COLORS[app.priority] || 'gray'}>{app.priority || 'normal'}</Badge> },
-          { label: 'Assigned To', value: app.assignedTo?.fullName ?? 'Unassigned' },
         ].map((s) => (
           <div key={s.label} className="card p-3 text-center">
             <p className="text-xs text-gray-400">{s.label}</p>
@@ -649,14 +647,6 @@ const BankLoanDetail = ({ application, onBack }) => {
                   <Button onClick={() => setStatusModal(true)}>Change Status</Button>
                 )}
               </div>
-            </Card>
-
-            <AssignPanel
-              applicationId={app._id}
-              currentAssignee={app.assignedTo}
-              qc={qc}
-              can={can}
-            />
           </div>
         )}
       </div>
@@ -666,67 +656,7 @@ const BankLoanDetail = ({ application, onBack }) => {
   );
 };
 
-// ─── Assignment Panel Component ────────────────────────────────────────────────
 
-const AssignPanel = ({ applicationId, currentAssignee, qc, can }) => {
-  const [selectedUser, setSelectedUser] = useState(currentAssignee?._id || '');
-
-  const { data: usersData, isLoading } = useQuery({
-    queryKey: ['users', { limit: 100 }],
-    queryFn: () => getUsers({ limit: 100 }),
-    select: (res) => res.data.data,
-  });
-
-  const mutation = useMutation({
-    mutationFn: (data) => assignBankLoan(applicationId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['bank-loan', applicationId] });
-      qc.invalidateQueries({ queryKey: ['bank-loans'] });
-      toast.success('Application assigned successfully');
-    },
-    onError: (e) => toast.error(e.response?.data?.message || 'Assignment failed'),
-  });
-
-  const canEdit = can('bankLoans.update');
-
-  return (
-    <Card header="Assign Staff">
-      <div className="space-y-4">
-        <p className="text-sm text-gray-500">Pick a staff member to handle this application.</p>
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <select
-              className="input-base"
-              value={selectedUser}
-              onChange={(e) => setSelectedUser(e.target.value)}
-              disabled={!canEdit || isLoading}
-            >
-              <option value="">Unassigned</option>
-              {(usersData ?? [])
-                .filter((u) => u.role !== 'viewer')
-                .map((u) => (
-                  <option key={u._id} value={u._id}>
-                    {u.fullName} (@{u.username})
-                  </option>
-                ))}
-            </select>
-          </div>
-          {canEdit && (
-            <Button
-              loading={mutation.isPending}
-              onClick={() => mutation.mutate({ assignedTo: selectedUser })}
-              disabled={isLoading}
-            >
-              Assign
-            </Button>
-          )}
-        </div>
-      </div>
-    </Card>
-  );
-};
-
-// ─── Main List Page ────────────────────────────────────────────────────────────
 
 const BankLoans = () => {
   usePageTitle('Bank Loans');
