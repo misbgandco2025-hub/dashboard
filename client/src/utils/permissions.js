@@ -34,6 +34,12 @@ const PERMISSIONS = {
   // Users
   'users.manage': [ROLES.ADMIN],
 
+  // Fees (admin only)
+  'fees.create': [ROLES.ADMIN],
+  'fees.read':   [ROLES.ADMIN],
+  'fees.update': [ROLES.ADMIN],
+  'fees.delete': [ROLES.ADMIN],
+
   // Reports
   'reports.view': [ROLES.ADMIN, ROLES.DATA_ENTRY, ROLES.VIEWER],
   'reports.performance': [ROLES.ADMIN, ROLES.VIEWER],
@@ -54,6 +60,7 @@ export const canAccess = (role, page) => {
   const pagePerms = {
     configuration: [ROLES.ADMIN],
     users: [ROLES.ADMIN],
+    fees: [ROLES.ADMIN],
     reports: [ROLES.ADMIN, ROLES.DATA_ENTRY, ROLES.VIEWER],
   };
   const allowed = pagePerms[page];
@@ -69,6 +76,7 @@ export const getNavItems = (role) => {
     { path: '/bank-loans', label: 'Bank Loans', icon: 'Landmark', roles: [ROLES.ADMIN, ROLES.DATA_ENTRY, ROLES.VIEWER] },
     { path: '/subsidies', label: 'Subsidies', icon: 'HandCoins', roles: [ROLES.ADMIN, ROLES.DATA_ENTRY, ROLES.VIEWER] },
     { path: '/reports', label: 'Reports', icon: 'BarChart3', roles: [ROLES.ADMIN, ROLES.VIEWER] },
+    { path: '/fees', label: 'Fees', icon: 'Receipt', roles: [ROLES.ADMIN] },
     { path: '/configuration', label: 'Configuration', icon: 'Settings2', roles: [ROLES.ADMIN] },
     { path: '/users', label: 'Users', icon: 'UserCog', roles: [ROLES.ADMIN] },
   ];
