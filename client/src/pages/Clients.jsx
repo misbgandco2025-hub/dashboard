@@ -37,7 +37,7 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
       alternateMobile: client.alternateMobile, address: client.address,
       businessName: client.businessName, bankName: client.bankName,
       branchName: client.branchName, ifscCode: client.ifscCode,
-      accountNumber: client.accountNumber, bankContactPerson: client.bankContactPerson,
+      bankContactPerson: client.bankContactPerson,
       bankContactMobile: client.bankContactMobile, bankContactEmail: client.bankContactEmail,
       bankContactDesignation: client.bankContactDesignation,
       sourceType: client.sourceType, vendorId: client.vendorId?._id || client.vendorId || '',
@@ -102,7 +102,6 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
           </div>
           <Input label="Branch Name" required error={errors.branchName?.message} {...register('branchName', { required: 'Required' })} />
           <Input label="IFSC Code" placeholder="SBIN0001234" error={errors.ifscCode?.message} {...register('ifscCode', { pattern: { value: /^[A-Z]{4}0[A-Z0-9]{6}$/, message: 'Invalid IFSC' } })} />
-          <Input label="Account Number" {...register('accountNumber')} />
         </div>
       </div>
 
