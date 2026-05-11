@@ -3,7 +3,8 @@ const router = express.Router();
 const {
   getApplications, createApplication, getApplicationById, updateApplication,
   deleteApplication, updateStatus, updateDocumentChecklist, addQuery,
-  updateQuery, addTimelineEntry, getTimeline, assignApplication, updateAifCredentials,
+  updateQuery, addTimelineEntry, getTimeline, assignApplication,
+  updateAifCredentials, updateLoanPreparation, updateLoanSanction,
 } = require('../controllers/bankLoanController');
 const { protect } = require('../middleware/authMiddleware');
 const { adminOnly, adminOrDataEntry } = require('../middleware/roleMiddleware');
@@ -29,5 +30,7 @@ router.post('/:id/timeline', adminOrDataEntry, addTimelineEntry);
 router.get('/:id/timeline', getTimeline);
 router.put('/:id/assign', adminOnly, auditLog('update', 'bank-loan', (req) => req.params.id), assignApplication);
 router.put('/:id/aif-credentials', adminOrDataEntry, updateAifCredentials);
+router.put('/:id/loan-preparation', adminOrDataEntry, updateLoanPreparation);
+router.put('/:id/loan-sanction', adminOrDataEntry, auditLog('update', 'bank-loan', (req) => req.params.id), updateLoanSanction);
 
 module.exports = router;
