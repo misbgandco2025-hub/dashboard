@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Trash2, Eye, Filter } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Eye, Filter, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
 
 import { getClients, createClient, updateClient, deleteClient, checkDuplicate } from '../services/clientService';
-import { getVendors } from '../services/vendorService';
+import { getVendors, createVendor } from '../services/vendorService';
 import useAuth from '../hooks/useAuth';
 import useDebounce from '../hooks/useDebounce';
 import usePageTitle from '../hooks/usePageTitle';
@@ -20,18 +20,66 @@ import { StatusBadge } from '../components/common/Badge';
 import { formatDate } from '../utils/dateFormat';
 import { CLIENT_TYPE_COLORS, COMMON_BANKS, SOURCE_TYPES, CLIENT_TYPES } from '../utils/constants';
 
+// ── Quick Add Vendor inline panel ─────────────────────────────────────────────
+const QuickAddVendor = ({ onCreated, onCancel }) => {
+  const qc = useQueryClient();
+  const { register, handleSubmit, formState: { errors } } = useForm();
+  const mutation = useMutation({
+    mutationFn: (data) => createVendor(data),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['vendors'] });
+      toast.success('Vendor created!');
+      onCreated(res.data.data); // pass new vendor back so it can be auto-selected
+    },
+    onError: (e) => {
+      const apiErrors = e.response?.data?.errors;
+      if (apiErrors?.length) apiErrors.forEach(err => toast.error(err.message, { duration: 5000 }));
+      else toast.error(e.response?.data?.message || 'Failed to create vendor');
+    },
+  });
+
+  return (
+    <div className="mt-3 border border-primary-200 bg-primary-50 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-primary-700">Quick Add Vendor</p>
+        <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input label="Vendor Name" required error={errors.vendorName?.message}
+            {...register('vendorName', { required: 'Required' })} />
+          <Input label="Contact Person" required error={errors.contactPerson?.message}
+            {...register('contactPerson', { required: 'Required' })} />
+          <Input label="Mobile" type="tel" error={errors.mobile?.message}
+            {...register('mobile', { pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
+          <Input label="Email" type="email" {...register('email')} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onCancel}
+            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
+          <Button type="submit" loading={mutation.isPending} size="sm">Create Vendor</Button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
 const ClientForm = ({ client, onSuccess, onClose }) => {
   const qc = useQueryClient();
   const isEdit = !!client;
   const [sourceType, setSourceType] = useState(client?.sourceType || 'direct');
+  const [showQuickVendor, setShowQuickVendor] = useState(false);
+  const [newVendorId, setNewVendorId] = useState(null);
 
-  const { data: vendorsData } = useQuery({
+  const { data: vendorsData, refetch: refetchVendors } = useQuery({
     queryKey: ['vendors', { limit: 100 }],
     queryFn: () => getVendors({ limit: 100 }),
     select: (res) => res.data.data,
   });
 
-  const { register, handleSubmit, formState: { errors }, setError } = useForm({
+  const { register, handleSubmit, formState: { errors }, setError, setValue } = useForm({
     defaultValues: client ? {
       name: client.name, email: client.email, mobile: client.mobile,
       alternateMobile: client.alternateMobile, address: client.address,
@@ -44,6 +92,13 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
       clientType: client.clientType,
     } : { sourceType: 'direct', clientType: 'bank-loan' },
   });
+
+  const handleVendorCreated = async (newVendor) => {
+    await refetchVendors();
+    setNewVendorId(newVendor._id);
+    setValue('vendorId', newVendor._id);
+    setShowQuickVendor(false);
+  };
 
   const mutation = useMutation({
     mutationFn: async (data) => {
@@ -132,12 +187,30 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
             </div>
           </div>
           {sourceType === 'vendor' && (
-            <div>
-              <label className="label-base">Vendor<span className="text-danger-500 ml-0.5">*</span></label>
-              <select className="input-base" {...register('vendorId', { required: sourceType === 'vendor' ? 'Required' : false })}>
+            <div className="sm:col-span-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="label-base mb-0">Vendor<span className="text-danger-500 ml-0.5">*</span></label>
+                {!showQuickVendor && (
+                  <button type="button" onClick={() => setShowQuickVendor(true)}
+                    className="flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium">
+                    <Plus className="h-3.5 w-3.5" /> Add New Vendor
+                  </button>
+                )}
+              </div>
+              <select className="input-base"
+                {...register('vendorId', { required: sourceType === 'vendor' ? 'Required' : false })}
+                value={newVendorId ?? undefined}
+                onChange={(e) => { setNewVendorId(null); register('vendorId').onChange(e); }}
+              >
                 <option value="">Select vendor...</option>
                 {(vendorsData ?? []).map((v) => <option key={v._id} value={v._id}>{v.vendorName}</option>)}
               </select>
+              {showQuickVendor && (
+                <QuickAddVendor
+                  onCreated={handleVendorCreated}
+                  onCancel={() => setShowQuickVendor(false)}
+                />
+              )}
             </div>
           )}
           <div>
