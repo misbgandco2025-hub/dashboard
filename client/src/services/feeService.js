@@ -6,5 +6,6 @@ export const createFee = (data) => api.post('/fees', data);
 export const updateFee = (id, data) => api.put(`/fees/${id}`, data);
 export const deleteFee = (id) => api.delete(`/fees/${id}`);
 export const addFeePayment = (id, data) => api.post(`/fees/${id}/payment`, data);
+export const updateFeePayment = (id, paymentId, data) => api.put(`/fees/${id}/payment/${paymentId}`, data);
 export const waiveFee = (id, data) => api.put(`/fees/${id}/waive`, data);
 export const getFeeAnalytics = (period = 'month') => api.get('/fees/analytics', { params: { period } });
