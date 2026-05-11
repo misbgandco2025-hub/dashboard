@@ -1233,7 +1233,6 @@ const Subsidies = () => {
       { id: 'subsidy-docs',    label: `Subsidy Docs (${subsidyDocs.length})` },
       { id: 'claim',           label: 'JIT / Subsidy Claim' },
       { id: 'payment',         label: 'Payment' },
-      { id: 'queries',         label: `Queries (${app.queries?.length ?? 0})` },
       { id: 'timeline',        label: 'Timeline' },
       { id: 'status',          label: 'Status' },
     ];
@@ -1286,16 +1285,16 @@ const Subsidies = () => {
         <div className="border-b border-gray-200">
           <div className="flex overflow-x-auto">
             {tabs.map((t) => (
-              <button key={t.id} onClick={() => !disabledTabs.has(t.id) && setActiveTab(t.id)}
+              <button key={t.id} onClick={() => setActiveTab(t.id)}
                 className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  disabledTabs.has(t.id)
-                    ? 'border-transparent text-gray-300 cursor-not-allowed'
-                    : activeTab === t.id
-                      ? 'border-primary-600 text-primary-700'
+                  activeTab === t.id
+                    ? 'border-primary-600 text-primary-700'
+                    : disabledTabs.has(t.id)
+                      ? 'border-transparent text-gray-400 hover:text-gray-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}>
                 {t.label}
-                {disabledTabs.has(t.id) && <span className="ml-1 text-red-400">🔒</span>}
+                {disabledTabs.has(t.id) && <span className="ml-1 text-amber-400">🔒</span>}
               </button>
             ))}
           </div>
