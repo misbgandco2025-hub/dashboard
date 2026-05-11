@@ -8,7 +8,7 @@ import { useForm } from 'react-hook-form';
 import {
   getBankLoans, getBankLoanById, createBankLoan, updateBankLoan, deleteBankLoan,
   updateBankLoanStatus, updateDocumentChecklist, addQuery, updateQuery,
-  addTimelineEntry, updateAifCredentials,
+  addTimelineEntry, updateAifCredentials, updateLoanPreparation, updateLoanSanction,
 } from '../services/bankLoanService';
 import { getClients } from '../services/clientService';
 import useAuth from '../hooks/useAuth';
@@ -515,10 +515,273 @@ const AifCredentialsPanel = ({ applicationId, credentials }) => {
   );
 };
 
+// ─── Loan Preparation Panel ────────────────────────────────────────────────────
+
+const LOAN_PREP_META = {
+  'not-started': { label: 'Not Started', color: 'gray'   },
+  'in-progress':  { label: 'In Progress', color: 'yellow' },
+  ready:          { label: 'Ready',       color: 'green'  },
+};
+
+const LoanPreparationPanel = ({ applicationId, loanPreparation }) => {
+  const qc = useQueryClient();
+  const { can } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    preparationStatus: 'not-started',
+    preparationStartDate: '',
+    preparationCompletedDate: '',
+    loanAmountCalculated: '',
+  });
+
+  useEffect(() => {
+    setForm({
+      preparationStatus:        loanPreparation?.preparationStatus ?? 'not-started',
+      preparationStartDate:     loanPreparation?.preparationStartDate ? new Date(loanPreparation.preparationStartDate).toISOString().slice(0, 10) : '',
+      preparationCompletedDate: loanPreparation?.preparationCompletedDate ? new Date(loanPreparation.preparationCompletedDate).toISOString().slice(0, 10) : '',
+      loanAmountCalculated:     loanPreparation?.loanAmountCalculated ?? '',
+    });
+  }, [loanPreparation]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateLoanPreparation(applicationId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank-loan', applicationId] });
+      qc.invalidateQueries({ queryKey: ['bank-loans'] });
+      toast.success('Loan preparation saved');
+      setEditing(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  const canEdit = can('bankLoans.update');
+  const prepMeta = LOAN_PREP_META[loanPreparation?.preparationStatus] || LOAN_PREP_META['not-started'];
+
+  return (
+    <div className="max-w-xl space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Loan Preparation</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Track preparation status before bank submission</p>
+        </div>
+        {canEdit && !editing && (
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
+        )}
+      </div>
+
+      {!editing ? (
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Status</span>
+            <Badge color={prepMeta.color}>{prepMeta.label}</Badge>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Loan Amount Calculated</span>
+            <span className="text-gray-800">{loanPreparation?.loanAmountCalculated ? `₹${Number(loanPreparation.loanAmountCalculated).toLocaleString('en-IN')}` : <span className="text-gray-300 italic">Not set</span>}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Start Date</span>
+            <span className="text-gray-800">{loanPreparation?.preparationStartDate ? new Date(loanPreparation.preparationStartDate).toLocaleDateString('en-IN') : <span className="text-gray-300 italic">Not set</span>}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Completed Date</span>
+            <span className="text-gray-800">{loanPreparation?.preparationCompletedDate ? new Date(loanPreparation.preparationCompletedDate).toLocaleDateString('en-IN') : <span className="text-gray-300 italic">Not set</span>}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-base">Status</label>
+              <select className="input-base" value={form.preparationStatus} onChange={e => setForm(f => ({ ...f, preparationStatus: e.target.value }))}>
+                {Object.entries(LOAN_PREP_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label-base">Loan Amount Calculated (₹)</label>
+              <input type="number" className="input-base" placeholder="0"
+                value={form.loanAmountCalculated} onChange={e => setForm(f => ({ ...f, loanAmountCalculated: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Start Date</label>
+              <input type="date" className="input-base"
+                value={form.preparationStartDate} onChange={e => setForm(f => ({ ...f, preparationStartDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Completed Date</label>
+              <input type="date" className="input-base"
+                value={form.preparationCompletedDate} onChange={e => setForm(f => ({ ...f, preparationCompletedDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" loading={mutation.isPending} onClick={() => mutation.mutate({
+              ...form,
+              preparationStartDate:     form.preparationStartDate || undefined,
+              preparationCompletedDate: form.preparationCompletedDate || undefined,
+              loanAmountCalculated:     form.loanAmountCalculated || undefined,
+            })}>Save</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Loan Sanction Panel ────────────────────────────────────────────────────────
+
+const SANCTION_META = {
+  pending:    { label: 'Pending',    color: 'yellow' },
+  sanctioned: { label: 'Sanctioned', color: 'green'  },
+  rejected:   { label: 'Rejected',   color: 'red'    },
+};
+
+const LoanSanctionPanel = ({ applicationId, loanSanction }) => {
+  const qc = useQueryClient();
+  const { can } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    sanctionStatus: 'pending',
+    sanctionDate: '',
+    sanctionedAmount: '',
+    sanctionLetterNumber: '',
+    sanctionConditions: '',
+    rejectionReason: '',
+  });
+
+  useEffect(() => {
+    setForm({
+      sanctionStatus:       loanSanction?.sanctionStatus ?? 'pending',
+      sanctionDate:         loanSanction?.sanctionDate ? new Date(loanSanction.sanctionDate).toISOString().slice(0, 10) : '',
+      sanctionedAmount:     loanSanction?.sanctionedAmount ?? '',
+      sanctionLetterNumber: loanSanction?.sanctionLetterNumber ?? '',
+      sanctionConditions:   loanSanction?.sanctionConditions ?? '',
+      rejectionReason:      loanSanction?.rejectionReason ?? '',
+    });
+  }, [loanSanction]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateLoanSanction(applicationId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank-loan', applicationId] });
+      qc.invalidateQueries({ queryKey: ['bank-loans'] });
+      toast.success('Loan sanction saved');
+      setEditing(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  const canEdit = can('bankLoans.update');
+  const meta = SANCTION_META[loanSanction?.sanctionStatus] || SANCTION_META.pending;
+
+  return (
+    <div className="max-w-xl space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">Loan Sanction</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Bank loan sanction / rejection outcome</p>
+        </div>
+        {canEdit && !editing && (
+          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
+        )}
+      </div>
+
+      {/* Status banner */}
+      <div className={`flex items-center gap-3 p-4 rounded-xl border ${
+        loanSanction?.sanctionStatus === 'sanctioned' ? 'bg-green-50 border-green-200' :
+        loanSanction?.sanctionStatus === 'rejected'   ? 'bg-red-50 border-red-200' :
+        'bg-yellow-50 border-yellow-200'
+      }`}>
+        <span className="text-2xl">
+          {loanSanction?.sanctionStatus === 'sanctioned' ? '✅' : loanSanction?.sanctionStatus === 'rejected' ? '❌' : '⏳'}
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">{meta.label}</p>
+          {loanSanction?.sanctionedAmount && loanSanction?.sanctionStatus === 'sanctioned' && (
+            <p className="text-xs text-gray-500">₹{Number(loanSanction.sanctionedAmount).toLocaleString('en-IN')} sanctioned</p>
+          )}
+          {loanSanction?.rejectionReason && loanSanction?.sanctionStatus === 'rejected' && (
+            <p className="text-xs text-red-600">{loanSanction.rejectionReason}</p>
+          )}
+        </div>
+      </div>
+
+      {!editing ? (
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Sanction Date</span>
+            <span className="text-gray-800">{loanSanction?.sanctionDate ? new Date(loanSanction.sanctionDate).toLocaleDateString('en-IN') : <span className="text-gray-300 italic">Not set</span>}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Sanctioned Amount</span>
+            <span className="text-gray-800">{loanSanction?.sanctionedAmount ? `₹${Number(loanSanction.sanctionedAmount).toLocaleString('en-IN')}` : <span className="text-gray-300 italic">Not set</span>}</span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Letter Number</span>
+            <span className="text-gray-800 font-mono">{loanSanction?.sanctionLetterNumber || <span className="text-gray-300 italic">Not set</span>}</span>
+          </div>
+          {loanSanction?.sanctionConditions && (
+            <div className="col-span-2 flex flex-col gap-0.5">
+              <span className="text-xs text-gray-400 font-medium">Conditions</span>
+              <span className="text-gray-800">{loanSanction.sanctionConditions}</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-base">Sanction Status</label>
+              <select className="input-base" value={form.sanctionStatus} onChange={e => setForm(f => ({ ...f, sanctionStatus: e.target.value }))}>
+                {Object.entries(SANCTION_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label-base">Sanction Date</label>
+              <input type="date" className="input-base"
+                value={form.sanctionDate} onChange={e => setForm(f => ({ ...f, sanctionDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Sanctioned Amount (₹)</label>
+              <input type="number" className="input-base"
+                value={form.sanctionedAmount} onChange={e => setForm(f => ({ ...f, sanctionedAmount: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Sanction Letter No.</label>
+              <input className="input-base font-mono"
+                value={form.sanctionLetterNumber} onChange={e => setForm(f => ({ ...f, sanctionLetterNumber: e.target.value }))} />
+            </div>
+            <div className="col-span-2">
+              <label className="label-base">Conditions</label>
+              <textarea className="input-base resize-none" rows={2}
+                value={form.sanctionConditions} onChange={e => setForm(f => ({ ...f, sanctionConditions: e.target.value }))} />
+            </div>
+            {form.sanctionStatus === 'rejected' && (
+              <div className="col-span-2">
+                <label className="label-base">Rejection Reason <span className="text-danger-500">*</span></label>
+                <textarea className="input-base resize-none" rows={2} placeholder="Why was the loan rejected?"
+                  value={form.rejectionReason} onChange={e => setForm(f => ({ ...f, rejectionReason: e.target.value }))} />
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="sm" loading={mutation.isPending} onClick={() => mutation.mutate({
+              ...form,
+              sanctionDate:     form.sanctionDate || undefined,
+              sanctionedAmount: form.sanctionedAmount || undefined,
+            })}>Save</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Application Detail Page ────────────────────────────────────────────────────
 
 const BankLoanDetail = ({ application, onBack }) => {
-  const [activeTab, setActiveTab] = useState('aif');
+  const [activeTab, setActiveTab] = useState('loan-prep');
   const [statusModal, setStatusModal] = useState(false);
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -539,12 +802,13 @@ const BankLoanDetail = ({ application, onBack }) => {
   const app = freshApp ?? application;
   const days = daysAgo(app.applicationDate);
   const tabs = [
-    { id: 'aif', label: 'AIF' },
-    { id: 'info', label: 'Application Info' },
-    { id: 'documents', label: `Documents (${app.documentChecklist?.length ?? '…'})` },
-    { id: 'queries', label: `Queries (${app.queries?.length ?? 0})` },
-    { id: 'timeline', label: 'Timeline' },
-    { id: 'status', label: 'Status' },
+    { id: 'loan-prep',    label: 'Loan Prep' },
+    { id: 'loan-sanction', label: 'Loan Sanction' },
+    { id: 'info',         label: 'Application Info' },
+    { id: 'documents',    label: `Documents (${app.documentChecklist?.length ?? '…'})` },
+    { id: 'queries',      label: `Queries (${app.queries?.length ?? 0})` },
+    { id: 'timeline',     label: 'Timeline' },
+    { id: 'status',       label: 'Status' },
   ];
 
   return (
@@ -594,8 +858,18 @@ const BankLoanDetail = ({ application, onBack }) => {
 
       {/* Tab Content */}
       <div>
-        {activeTab === 'aif' && (
-          <AifCredentialsPanel applicationId={app._id ?? application._id} credentials={app.aifCredentials} />
+        {activeTab === 'loan-prep' && (
+          <LoanPreparationPanel
+            applicationId={app._id ?? application._id}
+            loanPreparation={app.loanPreparation}
+          />
+        )}
+
+        {activeTab === 'loan-sanction' && (
+          <LoanSanctionPanel
+            applicationId={app._id ?? application._id}
+            loanSanction={app.loanSanction}
+          />
         )}
 
         {activeTab === 'info' && (
@@ -777,7 +1051,7 @@ const BankLoans = () => {
             <label className="label-base">Client<span className="text-danger-500 ml-0.5">*</span></label>
             <select className={`input-base ${createErrors.clientId ? 'input-error' : ''}`} {...register('clientId', { required: 'Client is required' })}>
               <option value="">Select client...</option>
-              {(clientsData ?? []).map((c) => <option key={c._id} value={c._id}>{c.name} — {c.clientId}</option>)}
+              {(clientsData ?? []).filter(c => c.clientType === 'bank-loan' || c.clientType === 'both').map((c) => <option key={c._id} value={c._id}>{c.name} — {c.clientId}</option>)}
             </select>
             {createErrors.clientId && <p className="mt-1 text-xs text-danger-600">{createErrors.clientId.message}</p>}
           </div>
