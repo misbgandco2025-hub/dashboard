@@ -39,7 +39,14 @@ const FEE_TYPES = [
   { value: 'miscellaneous',     label: 'Miscellaneous' },
 ];
 
-const GST_RATES = [0, 5, 12, 18, 28];
+const GST_RATES = [
+  { label: 'Non GST', value: 0 },
+  { label: '0%', value: 0 },
+  { label: '5%', value: 5 },
+  { label: '12%', value: 12 },
+  { label: '18%', value: 18 },
+  { label: '28%', value: 28 },
+];
 
 const PAYMENT_MODES = [
   { value: 'cash',   label: 'Cash' },
@@ -279,12 +286,6 @@ const CreateFeeModal = ({ isOpen, onClose, onSuccess }) => {
               </select>
               {errors.feeType && <p className="mt-1 text-xs text-danger-600">{errors.feeType.message}</p>}
             </div>
-            <div>
-              <label className="label-base">Due Date<span className="text-danger-500 ml-0.5">*</span></label>
-              <input type="date" className={`input-base ${errors.dueDate ? 'input-error' : ''}`}
-                {...register('dueDate', { required: 'Due date is required' })} />
-              {errors.dueDate && <p className="mt-1 text-xs text-danger-600">{errors.dueDate.message}</p>}
-            </div>
           </div>
         </div>
 
@@ -300,9 +301,9 @@ const CreateFeeModal = ({ isOpen, onClose, onSuccess }) => {
               {errors.baseAmount && <p className="mt-1 text-xs text-danger-600">{errors.baseAmount.message}</p>}
             </div>
             <div>
-              <label className="label-base">GST Rate (%)</label>
+              <label className="label-base">GST Rate</label>
               <select className="input-base" {...register('gstRate')}>
-                {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+                {GST_RATES.map((r) => <option key={r.label} value={r.value}>{r.label}</option>)}
               </select>
             </div>
             <div>
@@ -516,16 +517,15 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { label: 'Base Amount', value: formatCurrency(fee.baseAmount) },
-          { label: `GST (${fee.gstRate}%)`, value: formatCurrency(fee.gstAmount) },
+          { label: fee.gstRate > 0 ? `GST (${fee.gstRate}%)` : 'GST (Non GST)', value: fee.gstRate > 0 ? formatCurrency(fee.gstAmount) : '—' },
           { label: 'Total Amount', value: formatCurrency(fee.totalAmount), bold: true },
-          { label: 'Due Date', value: formatDate(fee.dueDate), red: overdue },
         ].map((s) => (
           <div key={s.label} className="card p-3 text-center">
             <p className="text-xs text-gray-400">{s.label}</p>
-            <p className={`text-sm font-semibold mt-1 ${s.red ? 'text-red-600' : 'text-gray-800'}`}>{s.value}</p>
+            <p className={`text-sm font-semibold mt-1 text-gray-800`}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -578,13 +578,24 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
       </Card>
 
       {/* Fee Information */}
-      <Card header="Fee Information">
+      <Card
+        header="Fee Information"
+        action={
+          !['paid', 'waived', 'cancelled'].includes(fee.status) && (
+            <button onClick={() => setEditModal(true)}
+              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+              ✏️ Edit
+            </button>
+          )
+        }
+      >
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
           {[
             ['Client', `${fee.clientId?.name ?? '—'} (${fee.clientId?.clientId ?? ''})`],
             ['Application', fee.applicationId?.applicationId ?? 'Not linked'],
             ['Description', fee.description],
             ['Fee Type', FEE_TYPE_LABELS[fee.feeType] ?? fee.feeType],
+            ['GST Rate', fee.gstRate > 0 ? `${fee.gstRate}%` : 'Non GST'],
             ['Invoice Number', fee.invoiceNumber],
             ['Invoice Date', formatDate(fee.invoiceDate)],
             ['Created By', fee.createdBy?.fullName ?? '—'],
@@ -599,7 +610,17 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
       </Card>
 
       {/* Payment History */}
-      <Card header={`Payment History (${fee.payments?.length ?? 0})`}>
+      <Card
+        header={`Payment History (${fee.payments?.length ?? 0})`}
+        action={
+          !['paid', 'waived', 'cancelled'].includes(fee.status) && (
+            <button onClick={() => setPaymentModal(true)}
+              className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+              + Add Payment
+            </button>
+          )
+        }
+      >
         {!fee.payments?.length ? (
           <p className="text-sm text-gray-400 text-center py-6">No payments recorded yet.</p>
         ) : (
@@ -680,7 +701,6 @@ const EditFeeModal = ({ isOpen, onClose, fee }) => {
         feeType: fee.feeType,
         baseAmount: fee.baseAmount,
         gstRate: fee.gstRate,
-        dueDate: fee.dueDate ? new Date(fee.dueDate).toISOString().slice(0, 10) : '',
         remarks: fee.remarks || '',
       });
     }
@@ -722,21 +742,15 @@ const EditFeeModal = ({ isOpen, onClose, fee }) => {
             </select>
           </div>
           <div>
-            <label className="label-base">Due Date<span className="text-danger-500 ml-0.5">*</span></label>
-            <input type="date" className={`input-base ${errors.dueDate ? 'input-error' : ''}`}
-              {...register('dueDate', { required: 'Required' })} />
-            {errors.dueDate && <p className="mt-1 text-xs text-danger-600">{errors.dueDate.message}</p>}
-          </div>
-          <div>
             <label className="label-base">Base Amount (₹)<span className="text-danger-500 ml-0.5">*</span></label>
             <input type="number" step="any" min="0" className={`input-base ${errors.baseAmount ? 'input-error' : ''}`}
               {...register('baseAmount', { required: 'Required', min: { value: 0.01, message: 'Must be > 0' } })} />
             {errors.baseAmount && <p className="mt-1 text-xs text-danger-600">{errors.baseAmount.message}</p>}
           </div>
           <div>
-            <label className="label-base">GST Rate (%)</label>
+            <label className="label-base">GST Rate</label>
             <select className="input-base" {...register('gstRate')}>
-              {GST_RATES.map((r) => <option key={r} value={r}>{r}%</option>)}
+              {GST_RATES.map((r) => <option key={r.label} value={r.value}>{r.label}</option>)}
             </select>
           </div>
         </div>
