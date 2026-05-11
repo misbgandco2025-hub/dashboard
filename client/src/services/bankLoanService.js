@@ -13,3 +13,5 @@ export const addTimelineEntry = (id, data) => api.post(`/bank-loans/${id}/timeli
 export const getTimeline = (id) => api.get(`/bank-loans/${id}/timeline`);
 export const assignBankLoan = (id, data) => api.put(`/bank-loans/${id}/assign`, data);
 export const updateAifCredentials = (id, data) => api.put(`/bank-loans/${id}/aif-credentials`, data);
+export const updateLoanPreparation = (id, data) => api.put(`/bank-loans/${id}/loan-preparation`, data);
+export const updateLoanSanction = (id, data) => api.put(`/bank-loans/${id}/loan-sanction`, data);
