@@ -778,10 +778,149 @@ const LoanSanctionPanel = ({ applicationId, loanSanction }) => {
   );
 };
 
+// ─── Application Info Panel (Editable) ────────────────────────────────────────
+
+const ApplicationInfoPanel = ({ applicationId, app, qc, can }) => {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    loanAmount: '', loanScheme: '', loanType: '',
+    bankRefNumber: '', applicationDate: '', priority: 'medium',
+  });
+
+  useEffect(() => {
+    setForm({
+      loanAmount:      app?.loanAmount ?? '',
+      loanScheme:      app?.loanScheme ?? '',
+      loanType:        app?.loanType ?? '',
+      bankRefNumber:   app?.bankRefNumber ?? '',
+      applicationDate: app?.applicationDate ? new Date(app.applicationDate).toISOString().slice(0, 10) : '',
+      priority:        app?.priority ?? 'medium',
+    });
+  }, [app]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateBankLoan(applicationId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank-loan', applicationId] });
+      qc.invalidateQueries({ queryKey: ['bank-loans'] });
+      toast.success('Application details updated');
+      setEditing(false);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
+  });
+
+  const canEdit = can('bankLoans.update');
+
+  return (
+    <div className="space-y-6">
+      {/* Editable section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Application Details</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Loan amount, scheme, type and other core details</p>
+          </div>
+          {canEdit && !editing && (
+            <button className="text-sm text-primary-600 font-medium hover:underline" onClick={() => setEditing(true)}>Edit</button>
+          )}
+        </div>
+
+        {!editing ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            {[
+              ['Application ID',   app?.applicationId],
+              ['Loan Amount',      app?.loanAmount ? `₹${Number(app.loanAmount).toLocaleString('en-IN')}` : null],
+              ['Loan Scheme',      app?.loanScheme],
+              ['Loan Type',        app?.loanType],
+              ['Bank Ref No.',     app?.bankRefNumber],
+              ['Application Date', formatDate(app?.applicationDate)],
+              ['Priority',         app?.priority],
+            ].map(([label, value]) => (
+              <div key={label} className="flex flex-col gap-0.5">
+                <span className="text-xs text-gray-400 font-medium">{label}</span>
+                <span className={`text-sm ${value ? 'text-gray-800' : 'text-gray-300 italic'}`}>{value || 'Not set'}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-gray-50 rounded-xl p-5 border border-gray-100 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label-base">Loan Amount (₹) <span className="text-danger-500">*</span></label>
+                <input type="number" className="input-base" placeholder="e.g. 5000000"
+                  value={form.loanAmount} onChange={e => setForm(f => ({ ...f, loanAmount: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label-base">Application Date</label>
+                <input type="date" className="input-base"
+                  value={form.applicationDate} onChange={e => setForm(f => ({ ...f, applicationDate: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label-base">Loan Scheme</label>
+                <input className="input-base" placeholder="e.g. AIF, PMEGP"
+                  value={form.loanScheme} onChange={e => setForm(f => ({ ...f, loanScheme: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label-base">Loan Type</label>
+                <input className="input-base" placeholder="e.g. Term Loan, Working Capital"
+                  value={form.loanType} onChange={e => setForm(f => ({ ...f, loanType: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label-base">Bank Reference No.</label>
+                <input className="input-base font-mono" placeholder="Bank ref number"
+                  value={form.bankRefNumber} onChange={e => setForm(f => ({ ...f, bankRefNumber: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label-base">Priority</label>
+                <select className="input-base" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="secondary" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+              <Button size="sm" loading={mutation.isPending}
+                onClick={() => mutation.mutate({
+                  ...form,
+                  loanAmount:      form.loanAmount      ? Number(form.loanAmount) : undefined,
+                  applicationDate: form.applicationDate || undefined,
+                })}>
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Client details (read-only) */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Client Information</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+          {[
+            ['Client Name',   app?.clientId?.name],
+            ['Client Mobile', app?.clientId?.mobile],
+            ['Business',      app?.clientId?.businessName],
+            ['Bank Name',     app?.clientId?.bankName],
+            ['Branch',        app?.clientId?.branchName],
+            ['Bank Contact',  app?.clientId?.bankContactPerson],
+          ].map(([label, value]) => (
+            <div key={label} className="flex flex-col gap-0.5">
+              <span className="text-xs text-gray-400 font-medium">{label}</span>
+              <span className={`text-sm ${value ? 'text-gray-800' : 'text-gray-300 italic'}`}>{value || '—'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Application Detail Page ────────────────────────────────────────────────────
 
 const BankLoanDetail = ({ application, onBack }) => {
-  const [activeTab, setActiveTab] = useState('loan-prep');
+  const [activeTab, setActiveTab] = useState('info');
   const [statusModal, setStatusModal] = useState(false);
   const qc = useQueryClient();
   const { can } = useAuth();
@@ -802,9 +941,9 @@ const BankLoanDetail = ({ application, onBack }) => {
   const app = freshApp ?? application;
   const days = daysAgo(app.applicationDate);
   const tabs = [
-    { id: 'loan-prep',    label: 'Loan Prep' },
+    { id: 'info',          label: 'Application Info' },
+    { id: 'loan-prep',     label: 'Loan Prep' },
     { id: 'loan-sanction', label: 'Loan Sanction' },
-    { id: 'info',         label: 'Application Info' },
     { id: 'documents',    label: `Documents (${app.documentChecklist?.length ?? '…'})` },
     { id: 'queries',      label: `Queries (${app.queries?.length ?? 0})` },
     { id: 'timeline',     label: 'Timeline' },
@@ -873,20 +1012,12 @@ const BankLoanDetail = ({ application, onBack }) => {
         )}
 
         {activeTab === 'info' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-            {[
-              ['Application ID', app.applicationId], ['Loan Amount', app.loanAmount ? `₹${Number(app.loanAmount).toLocaleString('en-IN')}` : '—'],
-              ['Loan Scheme', app.loanScheme], ['Loan Type', app.loanType],
-              ['Application Date', formatDate(app.applicationDate)], ['Client', app.clientId?.name],
-              ['Client Mobile', app.clientId?.mobile], ['Bank Name', app.clientId?.bankName],
-              ['Branch', app.clientId?.branchName], ['Bank Contact', app.clientId?.bankContactPerson],
-            ].map(([label, value]) => (
-              <div key={label} className="flex flex-col gap-0.5">
-                <span className="text-xs text-gray-400 font-medium">{label}</span>
-                <span className="text-gray-800">{value || '—'}</span>
-              </div>
-            ))}
-          </div>
+          <ApplicationInfoPanel
+            applicationId={app._id ?? application._id}
+            app={app}
+            qc={qc}
+            can={can}
+          />
         )}
 
         {activeTab === 'documents' && (
