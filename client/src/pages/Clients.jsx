@@ -29,7 +29,7 @@ const QuickAddVendor = ({ onCreated, onCancel }) => {
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['vendors'] });
       toast.success('Vendor created!');
-      onCreated(res.data.data); // pass new vendor back so it can be auto-selected
+      onCreated(res.data.data);
     },
     onError: (e) => {
       const apiErrors = e.response?.data?.errors;
@@ -39,9 +39,9 @@ const QuickAddVendor = ({ onCreated, onCancel }) => {
   });
 
   return (
-    <div className="mt-3 border border-primary-200 bg-primary-50 rounded-xl p-4 space-y-3">
+    <div className="mt-3 border border-primary-200 bg-primary-50 rounded-xl p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-primary-700">Quick Add Vendor</p>
+        <p className="text-sm font-semibold text-primary-700">Add New Vendor</p>
         <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600">
           <X className="h-4 w-4" />
         </button>
@@ -50,16 +50,29 @@ const QuickAddVendor = ({ onCreated, onCancel }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Vendor Name" required error={errors.vendorName?.message}
             {...register('vendorName', { required: 'Required' })} />
+          <Input label="Vendor Code" placeholder="Auto-generated if empty"
+            {...register('vendorCode')} />
           <Input label="Contact Person" required error={errors.contactPerson?.message}
             {...register('contactPerson', { required: 'Required' })} />
           <Input label="Mobile" type="tel" error={errors.mobile?.message}
             {...register('mobile', { pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
           <Input label="Email" type="email" {...register('email')} />
+          <Input label="Agreement Date" type="date" {...register('agreementDate')} />
         </div>
-        <div className="flex justify-end gap-2">
+        <div>
+          <label className="label-base">Address</label>
+          <textarea className="input-base resize-none" rows={2} {...register('address')} />
+        </div>
+        <div>
+          <label className="label-base">Commission / Agreement Details</label>
+          <textarea className="input-base resize-none" rows={2} {...register('commissionDetails')} />
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onCancel}
-            className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900">Cancel</button>
-          <Button type="submit" loading={mutation.isPending} size="sm">Create Vendor</Button>
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:bg-gray-50">
+            Cancel
+          </button>
+          <Button type="submit" loading={mutation.isPending}>Create Vendor</Button>
         </div>
       </form>
     </div>
