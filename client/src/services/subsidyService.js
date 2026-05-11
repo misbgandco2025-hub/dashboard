@@ -13,6 +13,7 @@ export const addSubsidyTimelineEntry     = (id, data)          => api.post(`/sub
 export const getSubsidyTimeline          = (id)                => api.get(`/subsidies/${id}/timeline`);
 export const assignSubsidy               = (id, data)          => api.put(`/subsidies/${id}/assign`, data);
 export const updateGocCredentials        = (id, data)          => api.put(`/subsidies/${id}/goc-credentials`, data);
+export const syncSubsidyDocuments        = (id)                => api.post(`/subsidies/${id}/sync-documents`);
 
 // ── Typed helpers for nested field updates (all hit PUT /:id) ────────────────
 export const updateSubsidyNhbDetails     = (id, nhbDetails)        => updateSubsidy(id, { nhbDetails });
