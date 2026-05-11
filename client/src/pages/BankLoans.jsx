@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Trash2, ChevronRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
 
@@ -1077,9 +1077,21 @@ const BankLoans = () => {
   const [detailApp, setDetailApp] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const debounced = useDebounce(search);
+  const navigate  = useNavigate();
+  const location   = useLocation();
 
-  useState(() => { configStore.fetchConfigurations(); }, []);
+  // Auto-open an application passed from the Dashboard drill-down
+  useEffect(() => {
+    if (location.state?.openApp) {
+      setDetailApp(location.state.openApp);
+      // Clear the state so back-navigation doesn't re-open it
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, []);
+
+
+  const debounced = useDebounce(search);
+  useEffect(() => { configStore.fetchConfigurations(); }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ['bank-loans', { search: debounced, page, limit }],
