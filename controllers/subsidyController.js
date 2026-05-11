@@ -14,7 +14,7 @@ const populateOptions = [
   },
   { path: 'assignedTo',  select: 'fullName username' },
   { path: 'createdBy',   select: 'fullName username' },
-  { path: 'documentChecklist.documentType', select: 'name required' },
+  { path: 'documentChecklist.documentType', select: 'name required subCategory' },
   { path: 'queries.assignedTo',             select: 'fullName username' },
   { path: 'timeline.performedBy',           select: 'fullName username' },
 ];
