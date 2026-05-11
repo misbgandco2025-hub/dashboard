@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Trash2, ChevronRight, Filter, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import {
   getSubsidies, getSubsidyById, createSubsidy, deleteSubsidy,
@@ -1079,7 +1080,18 @@ const Subsidies = () => {
 
   const debounced = useDebounce(search);
 
+  const navigate = useNavigate();
+  const location = useLocation();
+
   useEffect(() => { configStore.fetchConfigurations(); }, []);
+
+  // Auto-open an application passed from the Dashboard drill-down
+  useEffect(() => {
+    if (location.state?.openApp) {
+      setDetailApp(location.state.openApp);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, []);
 
   const queryParams = {
     search: debounced, page, limit,
