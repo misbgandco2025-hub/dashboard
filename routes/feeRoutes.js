@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   createFee, getAllFees, getFeeById, updateFee,
-  addPayment, waiveFee, deleteFee, getFeeAnalytics,
+  addPayment, updatePayment, waiveFee, deleteFee, getFeeAnalytics,
 } = require('../controllers/feeController');
 const { protect } = require('../middleware/authMiddleware');
 const { adminOnly } = require('../middleware/roleMiddleware');
@@ -23,6 +23,7 @@ router.route('/:id')
   .delete(deleteFee);
 
 router.post('/:id/payment', addPayment);
+router.put('/:id/payment/:paymentId', updatePayment);
 router.put('/:id/waive', waiveFee);
 
 module.exports = router;
