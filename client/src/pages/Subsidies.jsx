@@ -1052,10 +1052,13 @@ const Subsidies = () => {
     }
 
     const allDocs = app.documentChecklist ?? [];
-    const gocDocs     = allDocs.filter(d => d.subCategory === 'goc');
-    const subsidyDocs = allDocs.filter(d => d.subCategory === 'subsidy');
-    // Docs with no subCategory fall into both tabs as fallback
-    const untaggedDocs = allDocs.filter(d => !d.subCategory);
+    // Resolve subCategory: prefer the stored value; fall back to the populated FieldConfiguration ref.
+    // This handles existing applications created before subCategory was introduced.
+    const resolveSubCat = (d) => d.subCategory || d.documentType?.subCategory;
+    const gocDocs     = allDocs.filter(d => resolveSubCat(d) === 'goc');
+    const subsidyDocs = allDocs.filter(d => resolveSubCat(d) === 'subsidy');
+    // Docs where NEITHER the stored field nor the FieldConfiguration has a subCategory yet
+    const untaggedDocs = allDocs.filter(d => !resolveSubCat(d));
 
     const tabs = [
       { id: 'info',         label: 'Info' },
