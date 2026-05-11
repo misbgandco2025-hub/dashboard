@@ -173,7 +173,7 @@ const subsidyApplicationSchema = new mongoose.Schema(
     // ── Upgraded: strict enum instead of free text ────────────────────────────
     schemeType: {
       type: String,
-      enum: ['nhb', 'general', 'aif', 'none'],
+      enum: ['nhb', 'general', 'none'],
       default: 'none',
       trim: true,
     },
