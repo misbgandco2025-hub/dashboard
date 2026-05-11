@@ -8,7 +8,7 @@ import {
   getSubsidies, getSubsidyById, createSubsidy, deleteSubsidy,
   updateSubsidyStatus, updateSubsidyDocumentChecklist,
   addSubsidyQuery, updateSubsidyQuery, addSubsidyTimelineEntry,
-  updateGocCredentials,
+  updateGocCredentials, syncSubsidyDocuments,
   updateSubsidyNhbDetails, updateSubsidyGocDetails,
   updateSubsidyPayment, updateSubsidyVerification,
   updateSubsidyBankSanction, updateSubsidyClaim,
@@ -878,15 +878,37 @@ const DocumentsTab = ({ applicationId, docs, qc, can, title = 'Documents' }) => 
   const canEdit = can('subsidies.update');
   const received = docs.filter(d => d.status === 'received').length;
 
+  const syncMutation = useMutation({
+    mutationFn: () => syncSubsidyDocuments(applicationId),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['subsidy', applicationId] });
+      qc.invalidateQueries({ queryKey: ['subsidies'] });
+      toast.success(res.data?.message || 'Documents synced');
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Sync failed'),
+  });
+
   return (
     <div className="space-y-3">
-      {/* Progress header */}
+      {/* Progress header + Sync button */}
       <div className="flex items-center justify-between mb-1">
         <p className="text-sm text-gray-500">
           <span className="font-semibold text-gray-800">{received}</span> of{' '}
           <span className="font-semibold text-gray-800">{docs.length}</span> {title.toLowerCase()} received
         </p>
-        <span className="text-xs text-gray-400">{docs.length ? Math.round((received / docs.length) * 100) : 0}%</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400">{docs.length ? Math.round((received / docs.length) * 100) : 0}%</span>
+          {canEdit && (
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className="text-xs text-primary-600 font-medium hover:underline disabled:opacity-50"
+              title="Add any new document types from Configuration that are missing from this application"
+            >
+              {syncMutation.isPending ? 'Syncing…' : '⟳ Sync Documents'}
+            </button>
+          )}
+        </div>
       </div>
       <div className="w-full bg-gray-100 rounded-full h-1.5 mb-3">
         <div
@@ -896,7 +918,16 @@ const DocumentsTab = ({ applicationId, docs, qc, can, title = 'Documents' }) => 
       </div>
 
       {docs.length === 0 && (
-        <p className="text-center text-gray-400 py-8 text-sm">No {title.toLowerCase()} configured.</p>
+        <div className="text-center py-8">
+          <p className="text-gray-400 text-sm">No {title.toLowerCase()} configured.</p>
+          {canEdit && (
+            <p className="text-xs text-gray-400 mt-2">
+              Make sure document types are tagged in{' '}
+              <span className="font-medium">Configuration → Document Types → Subsidy</span>,
+              then click <span className="font-medium">⟳ Sync Documents</span> above.
+            </p>
+          )}
+        </div>
       )}
 
       {docs.map(doc => (
