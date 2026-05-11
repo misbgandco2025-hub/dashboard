@@ -246,6 +246,52 @@ const addPayment = async (req, res, next) => {
   }
 };
 
+// ─── PUT /api/fees/:id/payment/:paymentId ─────────────────────────────────────
+const updatePayment = async (req, res, next) => {
+  try {
+    const fee = await FeeEntry.findOne({ _id: req.params.id, isDeleted: false });
+    if (!fee) return next(ApiError.notFound('Fee not found'));
+
+    const payment = fee.payments.id(req.params.paymentId);
+    if (!payment) return next(ApiError.notFound('Payment not found'));
+
+    const { amount, paidDate, paymentMode, reference, remarks } = req.body;
+
+    const oldAmount = payment.amount;
+
+    if (amount !== undefined) {
+      const newAmount = parseFloat(amount);
+      if (newAmount <= 0) return next(ApiError.badRequest('Amount must be positive'));
+      // Check new total would not exceed total fee
+      const otherPaid = fee.paidAmount - oldAmount;
+      if (newAmount + otherPaid > fee.totalAmount + 0.01) {
+        return next(ApiError.badRequest(`Amount would exceed total fee (₹${fee.totalAmount})`));
+      }
+      payment.amount = newAmount;
+    }
+    if (paidDate !== undefined) payment.paidDate = paidDate;
+    if (paymentMode !== undefined) payment.paymentMode = paymentMode;
+    if (reference !== undefined) payment.reference = reference;
+    if (remarks !== undefined) payment.remarks = remarks;
+
+    // Recalculate totals
+    const totalPaid = fee.payments.reduce((s, p) => s + p.amount, 0);
+    fee.paidAmount = Math.round(totalPaid * 100) / 100;
+    fee.pendingAmount = Math.max(0, Math.round((fee.totalAmount - fee.paidAmount - (fee.waivedAmount || 0)) * 100) / 100);
+    if (fee.paidAmount >= fee.totalAmount) fee.status = 'paid';
+    else if (fee.paidAmount > 0) fee.status = 'partial';
+    else fee.status = 'pending';
+
+    fee.updatedBy = req.user._id;
+    await fee.save();
+    await fee.populate('payments.recordedBy', 'fullName');
+
+    return ApiResponse.success(res, 'Payment updated successfully', fee);
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── PUT /api/fees/:id/waive ───────────────────────────────────────────────────
 const waiveFee = async (req, res, next) => {
   try {
@@ -298,6 +344,7 @@ module.exports = {
   getFeeById,
   updateFee,
   addPayment,
+  updatePayment,
   waiveFee,
   deleteFee,
   getFeeAnalytics,
