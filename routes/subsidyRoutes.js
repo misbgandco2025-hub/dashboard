@@ -4,6 +4,7 @@ const {
   getApplications, createApplication, getApplicationById, updateApplication,
   deleteApplication, updateStatus, updateDocumentChecklist, addQuery,
   updateQuery, addTimelineEntry, getTimeline, assignApplication, updateGocCredentials,
+  syncDocuments,
 } = require('../controllers/subsidyController');
 const { protect } = require('../middleware/authMiddleware');
 const { adminOnly, adminOrDataEntry } = require('../middleware/roleMiddleware');
@@ -29,5 +30,6 @@ router.post('/:id/timeline', adminOrDataEntry, addTimelineEntry);
 router.get('/:id/timeline', getTimeline);
 router.put('/:id/assign', adminOnly, auditLog('update', 'subsidy', (req) => req.params.id), assignApplication);
 router.put('/:id/goc-credentials', adminOrDataEntry, updateGocCredentials);
+router.post('/:id/sync-documents', adminOrDataEntry, syncDocuments);
 
 module.exports = router;
