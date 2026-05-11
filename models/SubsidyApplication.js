@@ -83,10 +83,16 @@ nhbDetailsSchema.virtual('nhbPassword')
 
 // ── GOC Details Sub-schema ────────────────────────────────────────────────────
 const gocDetailsSchema = new mongoose.Schema({
-  gocApplicationDate: { type: Date },
+  gocApplicationDate:         { type: Date },
+  gocReferenceNumber:         { type: String, trim: true },
+  gocApplicationNotes:        { type: String, trim: true },
+  gocQueryDescription:        { type: String, trim: true },
+  gocQueryResolutionNotes:    { type: String, trim: true },
+  gocApprovalDate:            { type: Date },
+  gocApprovalReferenceNumber: { type: String, trim: true },
   gocStatus: {
     type: String,
-    enum: ['not-started', 'applied', 'approved', 'rejected'],
+    enum: ['not-started', 'applied', 'query', 'approved', 'rejected'],
     default: 'not-started',
   },
 }, { _id: false });
@@ -139,7 +145,7 @@ const bankLoanSanctionSchema = new mongoose.Schema({
   rejectionReason: { type: String, trim: true },
 }, { _id: false });
 
-// ── Subsidy Claim Sub-schema (NEW) ───────────────────────────────────────────
+// ── Subsidy Claim Sub-schema ────────────────────────────────────────────────
 const subsidyClaimSchema = new mongoose.Schema({
   claimSubmissionDate:   { type: Date },
   claimReferenceNumber:  { type: String, trim: true },
@@ -148,8 +154,8 @@ const subsidyClaimSchema = new mongoose.Schema({
   disbursementDate:      { type: Date },
   claimStatus: {
     type: String,
-    enum: ['not-submitted', 'submitted', 'approved', 'rejected', 'disbursed'],
-    default: 'not-submitted',
+    enum: ['pending', 'applied', 'in-process', 'rejected', 'complete'],
+    default: 'pending',
   },
   rejectionReason: { type: String, trim: true },
   rejectionDate:   { type: Date },
@@ -197,22 +203,18 @@ const subsidyApplicationSchema = new mongoose.Schema(
       enum: [
         'Documentation In Progress',
         'Documentation Completed',
-        'Loan Preparation',
-        'File Submitted to Bank',
-        'Under Bank Review',
-        'Bank Loan Sanctioned',
-        'Bank Loan Rejected',
+        'GOC Portal Setup',
         'GOC Application Submitted',
-        'GOC Processing',
+        'GOC Query Raised',
         'GOC Approved',
         'GOC Rejected',
-        'Subsidy Claim Submitted',
-        'Subsidy Claim Approved',
-        'Subsidy Claim Rejected',
-        'Subsidy Disbursed',
+        'Claim Pending',
+        'Claim Applied',
+        'Claim In Process',
+        'Claim Rejected',
+        'Claim Complete',
         'Payment Received',
         'Completed',
-        'Rejected',
       ],
     },
     currentStage:          { type: String, trim: true },
