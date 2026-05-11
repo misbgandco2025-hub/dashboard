@@ -5,6 +5,7 @@ const { encryptText, decryptText } = require('../utils/helpers');
 const documentChecklistSchema = new mongoose.Schema({
   documentType: { type: mongoose.Schema.Types.ObjectId, ref: 'FieldConfiguration', required: true },
   documentName: { type: String, trim: true },
+  subCategory:  { type: String, enum: ['goc', 'subsidy'] },
   status: {
     type: String,
     enum: ['pending', 'received'],
