@@ -53,10 +53,11 @@ const NHB_PORTAL_META = {
 };
 
 const GOC_STATUS_META = {
-  'not-started': { label: 'Not Started', color: 'gray'   },
-  applied:       { label: 'Applied',     color: 'blue'   },
-  approved:      { label: 'Approved',    color: 'green'  },
-  rejected:      { label: 'Rejected',    color: 'red'    },
+  'not-started': { label: 'Not Started',  color: 'gray'   },
+  applied:       { label: 'Applied',      color: 'blue'   },
+  query:         { label: 'Query Raised', color: 'orange' },
+  approved:      { label: 'Approved',     color: 'green'  },
+  rejected:      { label: 'Rejected',     color: 'red'    },
 };
 
 const LOAN_PREP_META = {
@@ -78,11 +79,11 @@ const SANCTION_META = {
 };
 
 const CLAIM_META = {
-  'not-submitted': { label: 'Not Submitted', color: 'gray'   },
-  submitted:       { label: 'Submitted',     color: 'blue'   },
-  approved:        { label: 'Approved',      color: 'green'  },
-  rejected:        { label: 'Rejected',      color: 'red'    },
-  disbursed:       { label: 'Disbursed',     color: 'emerald' },
+  pending:      { label: 'Pending',    color: 'yellow' },
+  applied:      { label: 'Applied',   color: 'blue'   },
+  'in-process': { label: 'In Process', color: 'purple' },
+  rejected:     { label: 'Rejected',  color: 'red'    },
+  complete:     { label: 'Complete',  color: 'green'  },
 };
 
 const SchemeBadge = ({ value }) => {
@@ -165,57 +166,66 @@ const invalidateBoth = (qc, applicationId) => {
   qc.invalidateQueries({ queryKey: ['subsidies'] });
 };
 
-// ─── GOC Credentials Panel ────────────────────────────────────────────────────
-
-const GocCredentialsPanel = ({ applicationId, credentials, qc, can }) => {
-  const [form, setForm] = useState({ email: '', mobile: '', password: '' });
+// ─── GOC Portal Panel ──────────────────────────────────────────────────────────────────────
+const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
+  const [form, setForm] = useState({ portalId: '', password: '', email: '', mobile: '' });
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
-    setForm({ email: credentials?.email ?? '', mobile: credentials?.mobile ?? '', password: '' });
+    setForm({
+      portalId: credentials?.email ?? '',   // email field repurposed as portal ID
+      password: '',
+      email:    credentials?.email ?? '',   // kept for legacy
+      mobile:   credentials?.mobile ?? '',
+    });
   }, [credentials]);
 
   const mutation = useMutation({
     mutationFn: (data) => updateGocCredentials(applicationId, data),
-    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('GOC credentials saved'); },
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('GOC portal credentials saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
+  const canEdit = can('subsidies.update');
+
   return (
     <EditablePanel
-      title="General Officer Certificate (GOC)"
-      subtitle="Portal login credentials for the GOC application"
-      canEdit={can('subsidies.update')}
+      title="GOC Portal Credentials"
+      subtitle="Login details for the GOC government portal"
+      canEdit={canEdit}
       saving={mutation.isPending}
-      onSave={(close) => mutation.mutate(form, { onSuccess: close })}
+      onSave={(close) => mutation.mutate({ email: form.email, mobile: form.mobile, password: form.password || undefined }, { onSuccess: close })}
       viewContent={
-        <div className="space-y-4">
-          <InfoRow label="Email ID"  value={credentials?.email} />
-          <InfoRow label="Mobile No." value={credentials?.mobile} />
-          <InfoRow label="Password"   value={credentials?._passwordEncrypted ? '••••••••' : null} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <InfoRow label="Portal Email / User ID" value={credentials?.email} mono />
+          <InfoRow label="Mobile (OTP)"           value={credentials?.mobile} />
+          <InfoRow label="Password"               value={credentials?._passwordEncrypted ? '••••••••' : null} />
         </div>
       }
     >
-      <div>
-        <label className="label-base">Email ID</label>
-        <input type="email" className="input-base" placeholder="email@example.com"
-          value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
-      </div>
-      <div>
-        <label className="label-base">Mobile No.</label>
-        <input type="tel" className="input-base" placeholder="10-digit mobile number"
-          value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
-      </div>
-      <div>
-        <label className="label-base">
-          Password {credentials?._passwordEncrypted && <span className="text-gray-400 font-normal">(leave blank to keep current)</span>}
-        </label>
-        <div className="relative">
-          <input type={showPass ? 'text' : 'password'} className="input-base pr-16"
-            placeholder={credentials?._passwordEncrypted ? 'Enter new password to change' : 'Set password'}
-            value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
-          <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary-600 font-medium"
-            onClick={() => setShowPass(v => !v)}>{showPass ? 'Hide' : 'Show'}</button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
+          <label className="label-base">Portal Email / User ID <span className="text-danger-500">*</span></label>
+          <input type="text" className="input-base font-mono" placeholder="gov.portal@example.com or user ID"
+            value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Mobile Number (for OTP) <span className="text-danger-500">*</span></label>
+          <input type="tel" className="input-base" placeholder="10-digit mobile number"
+            value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">
+            Password <span className="text-danger-500">*</span>{' '}
+            {credentials?._passwordEncrypted && <span className="text-gray-400 font-normal text-xs">(leave blank to keep current)</span>}
+          </label>
+          <div className="relative">
+            <input type={showPass ? 'text' : 'password'} className="input-base pr-16"
+              placeholder={credentials?._passwordEncrypted ? 'Enter new password to change' : 'Set password'}
+              value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary-600 font-medium"
+              onClick={() => setShowPass(v => !v)}>{showPass ? 'Hide' : 'Show'}</button>
+          </div>
         </div>
       </div>
     </EditablePanel>
@@ -404,67 +414,162 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
   );
 };
 
-// ─── GOC Details Panel (with prerequisite guard) ──────────────────────────────
+// ─── GOC Application Panel ────────────────────────────────────────────────────
 
-const GocDetailsPanel = ({ applicationId, gocDetails, bankLoanSanction, qc, can }) => {
-  const [form, setForm] = useState({ gocApplicationDate: '', gocStatus: 'not-started' });
-
-  const canEditGoc = useMemo(() => {
-    return bankLoanSanction?.sanctionStatus === 'sanctioned';
-  }, [bankLoanSanction]);
+const GocApplicationPanel = ({ applicationId, gocDetails, qc, can }) => {
+  const [form, setForm] = useState({
+    gocApplicationDate: '', gocReferenceNumber: '', gocApplicationNotes: '',
+    gocStatus: 'not-started', gocQueryDescription: '', gocQueryResolutionNotes: '',
+    gocApprovalDate: '', gocApprovalReferenceNumber: '',
+  });
 
   useEffect(() => {
     setForm({
-      gocApplicationDate: gocDetails?.gocApplicationDate ? new Date(gocDetails.gocApplicationDate).toISOString().slice(0, 10) : '',
-      gocStatus: gocDetails?.gocStatus ?? 'not-started',
+      gocApplicationDate:         gocDetails?.gocApplicationDate ? new Date(gocDetails.gocApplicationDate).toISOString().slice(0, 10) : '',
+      gocReferenceNumber:         gocDetails?.gocReferenceNumber ?? '',
+      gocApplicationNotes:        gocDetails?.gocApplicationNotes ?? '',
+      gocStatus:                  gocDetails?.gocStatus ?? 'not-started',
+      gocQueryDescription:        gocDetails?.gocQueryDescription ?? '',
+      gocQueryResolutionNotes:    gocDetails?.gocQueryResolutionNotes ?? '',
+      gocApprovalDate:            gocDetails?.gocApprovalDate ? new Date(gocDetails.gocApprovalDate).toISOString().slice(0, 10) : '',
+      gocApprovalReferenceNumber: gocDetails?.gocApprovalReferenceNumber ?? '',
     });
   }, [gocDetails]);
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyGocDetails(applicationId, data),
-    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('GOC details saved'); },
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('GOC application saved'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to save'),
   });
 
+  const gocStatus = gocDetails?.gocStatus;
+  const isApproved = gocStatus === 'approved';
+  const isQuery    = gocStatus === 'query';
+  const isRejected = gocStatus === 'rejected';
+
   return (
     <div className="space-y-4">
-      {!canEditGoc && (
-        <PrerequisiteAlert message="GOC application can only be submitted after bank loan is sanctioned." />
+      {/* Approval banner */}
+      {isApproved && (
+        <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+          <span className="text-green-600 text-xl">✅</span>
+          <div>
+            <p className="text-sm font-semibold text-green-800">GOC Approved</p>
+            <p className="text-xs text-green-700 mt-0.5">
+              Approval letter issued{gocDetails?.gocApprovalDate ? ` on ${formatDate(gocDetails.gocApprovalDate)}` : ''}.
+              Subsidy Documents &amp; Claim tabs are now unlocked.
+            </p>
+          </div>
+        </div>
       )}
+      {isRejected && (
+        <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <span className="text-red-500 text-xl">❌</span>
+          <p className="text-sm text-red-800 font-medium">GOC Rejected — Subsidy Claim and Payment are locked.</p>
+        </div>
+      )}
+      {isQuery && (
+        <div className="flex items-start gap-3 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+          <span className="text-orange-500 text-xl">🔶</span>
+          <p className="text-sm text-orange-800 font-medium">GOC Query Raised — Resolve the query and update status to Approved to proceed.</p>
+        </div>
+      )}
+
       <EditablePanel
         title="GOC Application"
-        subtitle="Government Order Certificate application details"
-        canEdit={can('subsidies.update') && canEditGoc}
+        subtitle="Government Order Certificate application details and status"
+        canEdit={can('subsidies.update')}
         saving={mutation.isPending}
         onSave={(close) => {
-          const payload = { ...form, gocApplicationDate: form.gocApplicationDate || undefined };
+          const payload = {
+            ...form,
+            gocApplicationDate: form.gocApplicationDate || undefined,
+            gocApprovalDate:    form.gocApprovalDate    || undefined,
+          };
           mutation.mutate(payload, { onSuccess: close });
         }}
         viewContent={
-          <div className="grid grid-cols-2 gap-4">
-            <InfoRow label="GOC Application Date" value={formatDate(gocDetails?.gocApplicationDate)} />
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs text-gray-400 font-medium">GOC Status</span>
-              <Badge color={(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).color}>
-                {(GOC_STATUS_META[gocDetails?.gocStatus] || GOC_STATUS_META['not-started']).label}
-              </Badge>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <InfoRow label="Application Date"   value={formatDate(gocDetails?.gocApplicationDate)} />
+              <InfoRow label="Reference Number"   value={gocDetails?.gocReferenceNumber} mono />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-gray-400 font-medium">GOC Status</span>
+                <Badge color={(GOC_STATUS_META[gocStatus] || GOC_STATUS_META['not-started']).color}>
+                  {(GOC_STATUS_META[gocStatus] || GOC_STATUS_META['not-started']).label}
+                </Badge>
+              </div>
+              {isApproved && <InfoRow label="Approval Date" value={formatDate(gocDetails?.gocApprovalDate)} />}
+              {isApproved && <InfoRow label="Approval Reference" value={gocDetails?.gocApprovalReferenceNumber} mono />}
             </div>
+            {gocDetails?.gocApplicationNotes && <InfoRow label="Notes" value={gocDetails.gocApplicationNotes} />}
+            {isQuery && (
+              <div className="space-y-2 p-3 bg-orange-50 rounded-lg">
+                <InfoRow label="Query Description"    value={gocDetails?.gocQueryDescription} />
+                <InfoRow label="Resolution Notes"     value={gocDetails?.gocQueryResolutionNotes} />
+              </div>
+            )}
           </div>
         }
       >
+        {/* Section A: Application Details */}
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Application Details</p>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="label-base">GOC Application Date</label>
+            <label className="label-base">Application Date</label>
             <input type="date" className="input-base"
               value={form.gocApplicationDate} onChange={e => setForm(f => ({ ...f, gocApplicationDate: e.target.value }))} />
           </div>
           <div>
-            <label className="label-base">GOC Status</label>
-            <select className="input-base" value={form.gocStatus} onChange={e => setForm(f => ({ ...f, gocStatus: e.target.value }))}>
-              {Object.entries(GOC_STATUS_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
-            </select>
+            <label className="label-base">Reference Number</label>
+            <input className="input-base font-mono" placeholder="GOC-XXXX"
+              value={form.gocReferenceNumber} onChange={e => setForm(f => ({ ...f, gocReferenceNumber: e.target.value }))} />
+          </div>
+          <div className="col-span-2">
+            <label className="label-base">Application Notes</label>
+            <textarea className="input-base resize-none" rows={2} placeholder="Any notes about the GOC application..."
+              value={form.gocApplicationNotes} onChange={e => setForm(f => ({ ...f, gocApplicationNotes: e.target.value }))} />
           </div>
         </div>
+
+        {/* Section B: GOC Status */}
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-2">GOC Status</p>
+        <div>
+          <label className="label-base">Status</label>
+          <select className="input-base" value={form.gocStatus} onChange={e => setForm(f => ({ ...f, gocStatus: e.target.value }))}>
+            {Object.entries(GOC_STATUS_META).map(([v, m]) => <option key={v} value={v}>{m.label}</option>)}
+          </select>
+        </div>
+
+        {form.gocStatus === 'query' && (
+          <div className="grid grid-cols-1 gap-4 p-3 bg-orange-50 rounded-lg border border-orange-100">
+            <div>
+              <label className="label-base">Query Description <span className="text-danger-500">*</span></label>
+              <textarea className="input-base resize-none" rows={2} placeholder="Describe the query raised by GOC..."
+                value={form.gocQueryDescription} onChange={e => setForm(f => ({ ...f, gocQueryDescription: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Resolution Notes</label>
+              <textarea className="input-base resize-none" rows={2} placeholder="How was the query resolved?"
+                value={form.gocQueryResolutionNotes} onChange={e => setForm(f => ({ ...f, gocQueryResolutionNotes: e.target.value }))} />
+            </div>
+          </div>
+        )}
+
+        {form.gocStatus === 'approved' && (
+          <div className="grid grid-cols-2 gap-4 p-3 bg-green-50 rounded-lg border border-green-100">
+            <div>
+              <label className="label-base">Approval Date</label>
+              <input type="date" className="input-base"
+                value={form.gocApprovalDate} onChange={e => setForm(f => ({ ...f, gocApprovalDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label-base">Approval Reference No.</label>
+              <input className="input-base font-mono" placeholder="Approval ref. no."
+                value={form.gocApprovalReferenceNumber} onChange={e => setForm(f => ({ ...f, gocApprovalReferenceNumber: e.target.value }))} />
+            </div>
+          </div>
+        )}
       </EditablePanel>
     </div>
   );
@@ -491,7 +596,7 @@ const SubsidyClaimPanel = ({ applicationId, subsidyClaim, gocDetails, qc, can })
       approvedSubsidyAmount: subsidyClaim?.approvedSubsidyAmount ?? '',
       claimApprovalDate:     subsidyClaim?.claimApprovalDate ? new Date(subsidyClaim.claimApprovalDate).toISOString().slice(0, 10) : '',
       disbursementDate:      subsidyClaim?.disbursementDate ? new Date(subsidyClaim.disbursementDate).toISOString().slice(0, 10) : '',
-      claimStatus:           subsidyClaim?.claimStatus ?? 'not-submitted',
+      claimStatus:           subsidyClaim?.claimStatus ?? 'pending',
       rejectionReason:       subsidyClaim?.rejectionReason ?? '',
       rejectionDate:         subsidyClaim?.rejectionDate ? new Date(subsidyClaim.rejectionDate).toISOString().slice(0, 10) : '',
     });
@@ -509,7 +614,7 @@ const SubsidyClaimPanel = ({ applicationId, subsidyClaim, gocDetails, qc, can })
         <PrerequisiteAlert message="Subsidy claim can only be submitted after GOC is approved." />
       )}
       <EditablePanel
-        title="Subsidy Claim"
+        title="JIT / Subsidy Claim"
         subtitle="Claim submission and disbursement tracking"
         canEdit={can('subsidies.update') && canSubmitClaim}
         saving={mutation.isPending}
@@ -605,7 +710,7 @@ const PaymentPanel = ({ applicationId, paymentDetails, subsidyClaim, qc, can }) 
   });
 
   const canMarkReceived = useMemo(() => {
-    return subsidyClaim?.claimStatus === 'disbursed';
+    return subsidyClaim?.claimStatus === 'complete';
   }, [subsidyClaim]);
 
   useEffect(() => {
@@ -629,7 +734,16 @@ const PaymentPanel = ({ applicationId, paymentDetails, subsidyClaim, qc, can }) 
   return (
     <div className="space-y-5 max-w-lg">
       {!canMarkReceived && (
-        <PrerequisiteAlert message="Payment can only be marked as received after subsidy is disbursed." />
+        <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-amber-800 font-medium">Payment Locked</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Payment can only be recorded after the subsidy claim is <strong>Complete</strong>.<br/>
+              Current claim status: <strong>{CLAIM_META[subsidyClaim?.claimStatus]?.label ?? 'Pending'}</strong>
+            </p>
+          </div>
+        </div>
       )}
 
       <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100">
@@ -1057,11 +1171,10 @@ const Subsidies = () => {
   // ── Current status options (enum from model) ──────────────────────────────
   const SUBSIDY_STATUS_OPTIONS = [
     'Documentation In Progress', 'Documentation Completed',
-    'Loan Preparation', 'File Submitted to Bank', 'Under Bank Review',
-    'Bank Loan Sanctioned', 'Bank Loan Rejected',
-    'GOC Application Submitted', 'GOC Processing', 'GOC Approved', 'GOC Rejected',
-    'Subsidy Claim Submitted', 'Subsidy Claim Approved', 'Subsidy Claim Rejected',
-    'Subsidy Disbursed', 'Payment Received', 'Completed', 'Rejected',
+    'GOC Portal Setup', 'GOC Application Submitted',
+    'GOC Query Raised', 'GOC Approved', 'GOC Rejected',
+    'Claim Pending', 'Claim Applied', 'Claim In Process',
+    'Claim Rejected', 'Claim Complete', 'Payment Received', 'Completed',
   ];
 
   // ── Detail View ─────────────────────────────────────────────────────────────
@@ -1069,32 +1182,35 @@ const Subsidies = () => {
     const days = daysAgo(app.applicationDate);
     const isNhb = app.schemeType?.toLowerCase() === 'nhb';
 
-    // ── Rejection detection ───────────────────────────────────────────────
-    const sanctionRejected = app.bankLoanSanction?.sanctionStatus === 'rejected';
-    const gocRejected      = app.gocDetails?.gocStatus === 'rejected';
-    const claimRejected    = app.subsidyClaim?.claimStatus === 'rejected';
-    const isRejected       = sanctionRejected || gocRejected || claimRejected;
+    // ── Gate / rejection detection ────────────────────────────────────────
+    const gocStatus    = app.gocDetails?.gocStatus;
+    const claimStatus  = app.subsidyClaim?.claimStatus;
+    const gocRejected  = gocStatus === 'rejected';
+    const gocApproved  = gocStatus === 'approved';
+    const claimComplete = claimStatus === 'complete';
+    const isRejected   = gocRejected || claimStatus === 'rejected';
 
-    const rejectionMessage = sanctionRejected
-      ? `Case closed — Bank loan was rejected${app.bankLoanSanction?.rejectionReason ? `: ${app.bankLoanSanction.rejectionReason}` : ''}`
-      : gocRejected
-        ? 'Case closed — GOC application was rejected'
-        : claimRejected
-          ? `Case closed — Subsidy claim was rejected${app.subsidyClaim?.rejectionReason ? `: ${app.subsidyClaim.rejectionReason}` : ''}`
-          : null;
+    const rejectionMessage = gocRejected
+      ? 'Case closed — GOC application was rejected'
+      : (claimStatus === 'rejected')
+        ? `Case closed — Subsidy claim was rejected${app.subsidyClaim?.rejectionReason ? `: ${app.subsidyClaim.rejectionReason}` : ''}`
+        : null;
 
     // Days in current stage
     const daysInStage = app.lastStatusChangeDate
       ? Math.floor((Date.now() - new Date(app.lastStatusChangeDate).getTime()) / (1000 * 60 * 60 * 24))
       : days;
 
-    // Tabs disabled after rejection point
+    // Gate logic:
+    // GOC rejected         → lock subsidy-docs, claim, payment
+    // GOC not approved yet → lock claim, payment (subsidy-docs stays open)
+    // Claim not complete   → lock payment
     const disabledTabs = new Set();
-    if (sanctionRejected) {
-      ['goc-details', 'goc-creds', 'goc-docs', 'verification', 'subsidy-docs', 'claim', 'payment'].forEach(t => disabledTabs.add(t));
-    } else if (gocRejected) {
+    if (gocRejected) {
       ['subsidy-docs', 'claim', 'payment'].forEach(t => disabledTabs.add(t));
-    } else if (claimRejected) {
+    } else if (!gocApproved) {
+      ['claim', 'payment'].forEach(t => disabledTabs.add(t));
+    } else if (!claimComplete) {
       disabledTabs.add('payment');
     }
 
@@ -1108,18 +1224,18 @@ const Subsidies = () => {
     const untaggedDocs = allDocs.filter(d => !resolveSubCat(d));
 
     const tabs = [
-      { id: 'info',         label: 'Info' },
+      { id: 'info',            label: 'Info' },
       ...(isNhb ? [{ id: 'nhb', label: 'NHB Details' }] : []),
-      { id: 'goc-details',  label: 'GOC' },
-      { id: 'goc-creds',    label: 'GOC Portal' },
-      { id: 'goc-docs',     label: `GOC Docs (${gocDocs.length + untaggedDocs.length})` },
-      { id: 'verification', label: 'Verification' },
-      { id: 'subsidy-docs', label: `Subsidy Docs (${subsidyDocs.length})` },
-      { id: 'claim',        label: 'Subsidy Claim' },
-      { id: 'payment',      label: 'Payment' },
-      { id: 'queries',      label: `Queries (${app.queries?.length ?? 0})` },
-      { id: 'timeline',     label: 'Timeline' },
-      { id: 'status',       label: 'Status' },
+      { id: 'goc-docs',        label: `GOC Docs (${gocDocs.length + untaggedDocs.length})` },
+      { id: 'goc-portal',      label: 'GOC Portal' },
+      { id: 'goc-application', label: 'GOC Application' },
+      { id: 'verification',    label: 'Verification' },
+      { id: 'subsidy-docs',    label: `Subsidy Docs (${subsidyDocs.length})` },
+      { id: 'claim',           label: 'JIT / Subsidy Claim' },
+      { id: 'payment',         label: 'Payment' },
+      { id: 'queries',         label: `Queries (${app.queries?.length ?? 0})` },
+      { id: 'timeline',        label: 'Timeline' },
+      { id: 'status',          label: 'Status' },
     ];
 
     return (
@@ -1145,7 +1261,7 @@ const Subsidies = () => {
             { label: 'Project Cost',      value: app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—' },
             { label: 'Days in Process',   value: `${days} days` },
             { label: 'Days in Stage',     value: <span className={daysInStage > 15 ? 'text-red-600' : daysInStage > 7 ? 'text-yellow-600' : 'text-green-600'}>{daysInStage}d</span> },
-            { label: 'Bank Sanction',     value: <MetaBadge value={app.bankLoanSanction?.sanctionStatus} meta={SANCTION_META} /> },
+            { label: 'GOC Status',        value: <MetaBadge value={app.gocDetails?.gocStatus} meta={GOC_STATUS_META} /> },
             { label: 'Claim Status',      value: <MetaBadge value={app.subsidyClaim?.claimStatus} meta={CLAIM_META} /> },
           ].map((s) => (
             <div key={s.label} className="card p-3 text-center">
@@ -1231,21 +1347,20 @@ const Subsidies = () => {
             />
           )}
 
-          {/* GOC DETAILS (with prerequisite) */}
-          {activeTab === 'goc-details' && (
-            <GocDetailsPanel
+          {/* GOC PORTAL CREDENTIALS */}
+          {activeTab === 'goc-portal' && (
+            <GocPortalPanel
               applicationId={app._id ?? detailApp._id}
-              gocDetails={app.gocDetails}
-              bankLoanSanction={app.bankLoanSanction}
+              credentials={app.gocCredentials}
               qc={qc} can={can}
             />
           )}
 
-          {/* GOC PORTAL CREDENTIALS */}
-          {activeTab === 'goc-creds' && (
-            <GocCredentialsPanel
+          {/* GOC APPLICATION */}
+          {activeTab === 'goc-application' && (
+            <GocApplicationPanel
               applicationId={app._id ?? detailApp._id}
-              credentials={app.gocCredentials}
+              gocDetails={app.gocDetails}
               qc={qc} can={can}
             />
           )}
