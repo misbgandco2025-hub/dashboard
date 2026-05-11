@@ -138,6 +138,30 @@ const bankLoanApplicationSchema = new mongoose.Schema(
       mobile: { type: String, trim: true },
       _passwordEncrypted: { type: String },
     },
+    // ── Loan Preparation ─────────────────────────────────────────────────────
+    loanPreparation: {
+      preparationStatus: {
+        type: String,
+        enum: ['not-started', 'in-progress', 'ready'],
+        default: 'not-started',
+      },
+      preparationStartDate:     { type: Date },
+      preparationCompletedDate: { type: Date },
+      loanAmountCalculated:     { type: Number, min: 0 },
+    },
+    // ── Loan Sanction ────────────────────────────────────────────────────────
+    loanSanction: {
+      sanctionStatus: {
+        type: String,
+        enum: ['pending', 'sanctioned', 'rejected'],
+        default: 'pending',
+      },
+      sanctionDate:         { type: Date },
+      sanctionedAmount:     { type: Number, min: 0 },
+      sanctionLetterNumber: { type: String, trim: true },
+      sanctionConditions:   { type: String, trim: true },
+      rejectionReason:      { type: String, trim: true },
+    },
     isDeleted: { type: Boolean, default: false },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
