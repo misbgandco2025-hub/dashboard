@@ -3,6 +3,7 @@ const Card = ({
   className = '',
   padding = 'p-5',
   header,
+  action,
   footer,
   variant = 'default',
 }) => {
@@ -15,10 +16,13 @@ const Card = ({
   return (
     <div className={`${variants[variant] || variants.default} ${className}`}>
       {header && (
-        <div className="px-5 py-4 border-b border-gray-100">
-          {typeof header === 'string' ? (
-            <h3 className="text-sm font-semibold text-gray-800">{header}</h3>
-          ) : header}
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            {typeof header === 'string' ? (
+              <h3 className="text-sm font-semibold text-gray-800">{header}</h3>
+            ) : header}
+          </div>
+          {action && <div>{action}</div>}
         </div>
       )}
       <div className={padding}>{children}</div>
