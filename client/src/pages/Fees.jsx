@@ -9,7 +9,7 @@ import { useForm } from 'react-hook-form';
 
 import {
   getFees, getFeeById, createFee, updateFee,
-  addFeePayment, waiveFee, deleteFee, getFeeAnalytics,
+  addFeePayment, updateFeePayment, waiveFee, deleteFee, getFeeAnalytics,
 } from '../services/feeService';
 import { getClients } from '../services/clientService';
 import { getSubsidies } from '../services/subsidyService';
@@ -413,6 +413,81 @@ const AddPaymentModal = ({ isOpen, onClose, fee }) => {
   );
 };
 
+// ─── Edit Payment Modal ───────────────────────────────────────────────────────
+const EditPaymentModal = ({ isOpen, onClose, fee, payment }) => {
+  const qc = useQueryClient();
+  const { register, handleSubmit, reset, formState: { errors } } = useForm();
+
+  useEffect(() => {
+    if (payment && isOpen) {
+      reset({
+        amount: payment.amount,
+        paidDate: payment.paidDate ? new Date(payment.paidDate).toISOString().slice(0, 10) : '',
+        paymentMode: payment.paymentMode,
+        reference: payment.reference || '',
+        remarks: payment.remarks || '',
+      });
+    }
+  }, [payment, isOpen, reset]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateFeePayment(fee._id, payment._id, {
+      ...data,
+      amount: parseFloat(data.amount),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['fees'] });
+      qc.invalidateQueries({ queryKey: ['fee', fee._id] });
+      qc.invalidateQueries({ queryKey: ['fee-analytics'] });
+      toast.success('Payment updated');
+      onClose();
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Update failed'),
+  });
+
+  if (!isOpen || !payment) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={`Edit Payment — ${payment.receiptNumber}`} size="md">
+      <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label-base">Amount (₹)<span className="text-danger-500 ml-0.5">*</span></label>
+            <input type="number" step="any" min="0.01" className={`input-base ${errors.amount ? 'input-error' : ''}`}
+              {...register('amount', { required: 'Required', min: { value: 0.01, message: 'Must be > 0' } })} />
+            {errors.amount && <p className="mt-1 text-xs text-danger-600">{errors.amount.message}</p>}
+          </div>
+          <div>
+            <label className="label-base">Payment Date<span className="text-danger-500 ml-0.5">*</span></label>
+            <input type="date" className={`input-base ${errors.paidDate ? 'input-error' : ''}`}
+              {...register('paidDate', { required: 'Required' })} />
+            {errors.paidDate && <p className="mt-1 text-xs text-danger-600">{errors.paidDate.message}</p>}
+          </div>
+          <div>
+            <label className="label-base">Payment Mode<span className="text-danger-500 ml-0.5">*</span></label>
+            <select className="input-base" {...register('paymentMode', { required: true })}>
+              {PAYMENT_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label-base">Reference No.</label>
+            <input className="input-base font-mono" placeholder="UPI Ref / Cheque No / TXN ID"
+              {...register('reference')} />
+          </div>
+        </div>
+        <div>
+          <label className="label-base">Remarks</label>
+          <textarea className="input-base resize-none" rows={2} {...register('remarks')} />
+        </div>
+        <div className="flex justify-end gap-3">
+          <Button variant="secondary" onClick={onClose} type="button">Cancel</Button>
+          <Button type="submit" loading={mutation.isPending}>Save Changes</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 // ─── Waive Fee Modal ──────────────────────────────────────────────────────────
 const WaiveFeeModal = ({ isOpen, onClose, fee }) => {
   const qc = useQueryClient();
@@ -469,6 +544,7 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
   const [paymentModal, setPaymentModal] = useState(false);
   const [waiveModal, setWaiveModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
+  const [editPayment, setEditPayment] = useState(null); // payment sub-doc being edited
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const { data: freshFee } = useQuery({
@@ -628,7 +704,7 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
             <table className="min-w-full">
               <thead className="bg-gray-50">
                 <tr>
-                  {['Receipt No.', 'Amount', 'Date', 'Mode', 'Reference', 'Recorded By'].map((h) => (
+                  {['Receipt No.', 'Amount', 'Date', 'Mode', 'Reference', 'Recorded By', ''].map((h) => (
                     <th key={h} className="table-th">{h}</th>
                   ))}
                 </tr>
@@ -642,6 +718,14 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
                     <td className="table-td capitalize">{p.paymentMode}</td>
                     <td className="table-td font-mono text-xs">{p.reference || '—'}</td>
                     <td className="table-td">{p.recordedBy?.fullName ?? '—'}</td>
+                    <td className="table-td text-right">
+                      <button
+                        onClick={() => setEditPayment(p)}
+                        className="text-xs text-primary-600 hover:text-primary-800 font-medium px-2 py-1 rounded hover:bg-primary-50 transition-colors"
+                      >
+                        ✏️ Edit
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -678,6 +762,7 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
       <AddPaymentModal isOpen={paymentModal} onClose={() => setPaymentModal(false)} fee={fee} />
       <WaiveFeeModal isOpen={waiveModal} onClose={() => setWaiveModal(false)} fee={fee} />
       <EditFeeModal isOpen={editModal} onClose={() => setEditModal(false)} fee={fee} />
+      <EditPaymentModal isOpen={!!editPayment} onClose={() => setEditPayment(null)} fee={fee} payment={editPayment} />
       <ConfirmDialog
         isOpen={deleteConfirm} onClose={() => setDeleteConfirm(false)}
         onConfirm={() => deleteMutation.mutate()}
