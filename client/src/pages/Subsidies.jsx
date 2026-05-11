@@ -36,7 +36,6 @@ import { PRIORITIES } from '../utils/constants';
 const SCHEME_META = {
   nhb:     { label: 'NHB',     color: 'green'  },
   general: { label: 'General', color: 'yellow' },
-  aif:     { label: 'AIF',     color: 'purple' },
   none:    { label: '—',       color: 'gray'   },
 };
 
@@ -954,7 +953,6 @@ const SCHEME_TABS = [
   { key: 'all', label: 'All' },
   { key: 'nhb', label: 'NHB' },
   { key: 'general', label: 'General' },
-  { key: 'aif', label: 'AIF' },
 ];
 
 const FilterBar = ({ filters, onChange, onClear }) => {
@@ -1709,7 +1707,6 @@ const Subsidies = () => {
                 <option value="none">None</option>
                 <option value="nhb">NHB</option>
                 <option value="general">General</option>
-                <option value="aif">AIF</option>
               </select>
             </div>
             <div>
