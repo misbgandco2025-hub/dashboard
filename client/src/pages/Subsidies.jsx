@@ -993,6 +993,22 @@ const Subsidies = () => {
     select: (res) => res.data.data,
   });
 
+  // Auto-sync on first load: the backend checks for any FieldConfiguration 'subsidy' docs
+  // not yet in this application's checklist and adds them. It also back-fills subCategory
+  // on existing items. The endpoint is idempotent — returns immediately if nothing to add.
+  useEffect(() => {
+    if (!detailData || !detailApp) return;
+    syncSubsidyDocuments(detailApp._id)
+      .then((res) => {
+        // Only re-fetch if something actually changed
+        const msg = res.data?.message ?? '';
+        if (!msg.includes('up to date')) {
+          qc.invalidateQueries({ queryKey: ['subsidy', detailApp._id] });
+        }
+      })
+      .catch(() => {}); // Silently ignore — manual ⟳ Sync button still available
+  }, [detailData?._id]); // Run once per application when its detail first arrives
+
   const app = detailData ?? detailApp;
 
   const deleteMutation = useMutation({
