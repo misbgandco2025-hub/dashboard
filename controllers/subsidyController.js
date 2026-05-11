@@ -29,26 +29,32 @@ const listPopulateOptions = [
   { path: 'assignedTo', select: 'fullName username' },
 ];
 
+// ── Claim status migration map (old → new) ────────────────────────────────────
+const CLAIM_STATUS_MIGRATION = {
+  'not-submitted': 'pending',
+  'submitted':     'applied',
+  'approved':      'in-process',
+  'disbursed':     'complete',
+};
+
 // ── Derive currentStatus from sub-document states ────────────────────────────
 const deriveStatus = (app) => {
   // Walk backwards from the END of the workflow
-  if (app.paymentDetails?.paymentReceived)                                      return 'Payment Received';
-  if (app.subsidyClaim?.claimStatus === 'disbursed')                            return 'Subsidy Disbursed';
-  if (app.subsidyClaim?.claimStatus === 'rejected')                             return 'Subsidy Claim Rejected';
-  if (app.subsidyClaim?.claimStatus === 'approved')                             return 'Subsidy Claim Approved';
-  if (app.subsidyClaim?.claimStatus === 'submitted')                            return 'Subsidy Claim Submitted';
-  if (app.gocDetails?.gocStatus === 'rejected')                                 return 'GOC Rejected';
-  if (app.gocDetails?.gocStatus === 'approved')                                 return 'GOC Approved';
-  if (app.gocDetails?.gocStatus === 'applied')                                  return 'GOC Application Submitted';
-  if (app.nhbDetails?.nhbPortalStatus &&
-      ['goc-processing','query-issued','query-replied'].includes(app.nhbDetails.nhbPortalStatus)) return 'GOC Processing';
-  if (app.bankLoanSanction?.sanctionStatus === 'rejected')                      return 'Bank Loan Rejected';
-  if (app.bankLoanSanction?.sanctionStatus === 'sanctioned')                    return 'Bank Loan Sanctioned';
-  if (app.bankSubmission?.submissionStatus === 'under-review')                  return 'Under Bank Review';
-  if (app.bankSubmission?.submissionStatus === 'submitted')                     return 'File Submitted to Bank';
-  if (['in-progress','ready'].includes(app.loanPreparation?.preparationStatus)) return 'Loan Preparation';
-  // Check document completion
-  if (app.documentChecklist?.length > 0 && app.documentChecklist.every(d => d.status === 'received')) return 'Documentation Completed';
+  if (app.paymentDetails?.paymentReceived)                                return 'Payment Received';
+  if (app.subsidyClaim?.claimStatus === 'complete')                       return 'Claim Complete';
+  if (app.subsidyClaim?.claimStatus === 'rejected')                       return 'Claim Rejected';
+  if (app.subsidyClaim?.claimStatus === 'in-process')                     return 'Claim In Process';
+  if (app.subsidyClaim?.claimStatus === 'applied')                        return 'Claim Applied';
+  if (app.subsidyClaim?.claimStatus === 'pending' &&
+      app.gocDetails?.gocStatus === 'approved')                           return 'Claim Pending';
+  if (app.gocDetails?.gocStatus === 'rejected')                           return 'GOC Rejected';
+  if (app.gocDetails?.gocStatus === 'approved')                           return 'GOC Approved';
+  if (app.gocDetails?.gocStatus === 'query')                              return 'GOC Query Raised';
+  if (app.gocDetails?.gocStatus === 'applied')                            return 'GOC Application Submitted';
+  if (app.gocCredentials?.email || app.gocCredentials?.mobile)           return 'GOC Portal Setup';
+  // Document completion
+  if (app.documentChecklist?.length > 0 &&
+      app.documentChecklist.every(d => d.status === 'received'))          return 'Documentation Completed';
   return 'Documentation In Progress';
 };
 
@@ -177,40 +183,27 @@ const updateApplication = async (req, res, next) => {
 
     // ── Business Rule Validations ───────────────────────────────────────────
 
-    // Rejection hard-stop: if sanction rejected, block all downstream updates
-    if (app.bankLoanSanction?.sanctionStatus === 'rejected') {
-      if (req.body.gocDetails || req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
-        return next(ApiError.badRequest('Case closed: bank loan was rejected. No further updates allowed.'));
-      }
-    }
-    // If GOC rejected, block claim and payment
+    // If GOC rejected, block claim and payment updates
     if (app.gocDetails?.gocStatus === 'rejected') {
       if (req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
-        return next(ApiError.badRequest('Case closed: GOC was rejected. No further updates allowed.'));
+        return next(ApiError.badRequest('Case closed: GOC was rejected. Claim and payment cannot be updated.'));
       }
     }
-    // If claim rejected, block payment
-    if (app.subsidyClaim?.claimStatus === 'rejected') {
-      if (req.body.paymentDetails?.paymentReceived) {
-        return next(ApiError.badRequest('Case closed: subsidy claim was rejected. No further updates allowed.'));
-      }
-    }
-
-    if (req.body.gocDetails && req.body.gocDetails.gocStatus &&
-        req.body.gocDetails.gocStatus !== 'not-started' &&
-        app.bankLoanSanction?.sanctionStatus !== 'sanctioned') {
-      return next(ApiError.badRequest('GOC application requires bank loan to be sanctioned first.'));
-    }
-
-    if (req.body.subsidyClaim && req.body.subsidyClaim.claimStatus &&
-        req.body.subsidyClaim.claimStatus !== 'not-submitted' &&
+    // Claim requires GOC approved
+    if (req.body.subsidyClaim?.claimStatus &&
+        req.body.subsidyClaim.claimStatus !== 'pending' &&
         app.gocDetails?.gocStatus !== 'approved') {
       return next(ApiError.badRequest('Subsidy claim requires GOC to be approved first.'));
     }
-
+    // Payment requires claim complete
     if (req.body.paymentDetails?.paymentReceived === true &&
-        app.subsidyClaim?.claimStatus !== 'disbursed') {
-      return next(ApiError.badRequest('Payment cannot be marked received before subsidy is disbursed.'));
+        app.subsidyClaim?.claimStatus !== 'complete') {
+      return next(ApiError.badRequest('Payment cannot be recorded before subsidy claim is complete.'));
+    }
+
+    // ── Migrate legacy claimStatus values on the fly ──────────────────────────
+    if (app.subsidyClaim?.claimStatus && CLAIM_STATUS_MIGRATION[app.subsidyClaim.claimStatus]) {
+      app.subsidyClaim.claimStatus = CLAIM_STATUS_MIGRATION[app.subsidyClaim.claimStatus];
     }
 
     // ── Scalar / flat fields ──────────────────────────────────────────────────
