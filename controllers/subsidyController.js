@@ -643,8 +643,66 @@ const updateGocCredentials = async (req, res, next) => {
   }
 };
 
+// ── POST /api/subsidies/:id/sync-documents ────────────────────────────────────
+// Adds any FieldConfiguration 'subsidy' docs not yet in this application's checklist.
+// Also back-fills subCategory on existing items where it is missing.
+const syncDocuments = async (req, res, next) => {
+  try {
+    const FieldConfiguration = require('../models/FieldConfiguration');
+    const app = await SubsidyApplication.findOne({ _id: req.params.id, isDeleted: false });
+    if (!app) return next(ApiError.notFound('Application not found.'));
+
+    const allFields = await FieldConfiguration.find({ type: 'subsidy', isActive: true, isDeleted: false }).sort({ displayOrder: 1 });
+
+    // Build set of documentType _ids already in the checklist
+    const existingIds = new Set(app.documentChecklist.map(d => String(d.documentType)));
+
+    let added = 0;
+    let updated = 0;
+
+    for (const f of allFields) {
+      if (!existingIds.has(String(f._id))) {
+        // Missing entirely — add it
+        app.documentChecklist.push({
+          documentType:  f._id,
+          documentName:  f.name,
+          subCategory:   f.subCategory,
+          status:        'pending',
+        });
+        added++;
+      } else {
+        // Already present — back-fill subCategory if missing
+        const item = app.documentChecklist.find(d => String(d.documentType) === String(f._id));
+        if (item && !item.subCategory && f.subCategory) {
+          item.subCategory = f.subCategory;
+          updated++;
+        }
+      }
+    }
+
+    if (added === 0 && updated === 0) {
+      await app.populate(populateOptions);
+      return ApiResponse.success(res, 'Document checklist already up to date', app);
+    }
+
+    app.timeline.push({
+      activity: `Document checklist synced: ${added} added, ${updated} updated`,
+      activityType: 'document-update',
+      performedBy: req.user._id,
+      isSystemGenerated: true,
+    });
+
+    await app.save();
+    await app.populate(populateOptions);
+    return ApiResponse.success(res, `Synced: ${added} document(s) added, ${updated} updated`, app);
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getApplications, createApplication, getApplicationById, updateApplication,
   deleteApplication, updateStatus, updateDocumentChecklist, addQuery,
   updateQuery, addTimelineEntry, getTimeline, assignApplication, updateGocCredentials,
+  syncDocuments,
 };
