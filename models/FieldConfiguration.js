@@ -13,6 +13,11 @@ const fieldConfigSchema = new mongoose.Schema(
       required: [true, 'Type is required'],
       enum: ['bank-loan', 'subsidy'],
     },
+    subCategory: {
+      type: String,
+      enum: ['goc', 'subsidy'],
+      // Only meaningful when type === 'subsidy'
+    },
     required: {
       type: Boolean,
       default: true,
