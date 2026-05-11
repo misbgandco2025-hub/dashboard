@@ -116,6 +116,7 @@ const createApplication = async (req, res, next) => {
     const documentChecklist = fields.map(f => ({
       documentType: f._id,
       documentName: f.name,
+      subCategory:  f.subCategory,
       isRequired: f.required,
       status: 'pending',
     }));
