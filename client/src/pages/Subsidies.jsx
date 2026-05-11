@@ -874,7 +874,7 @@ const DocumentRow = ({ doc, applicationId, qc, canEdit }) => {
   );
 };
 
-const DocumentsTab = ({ applicationId, docs, qc, can }) => {
+const DocumentsTab = ({ applicationId, docs, qc, can, title = 'Documents' }) => {
   const canEdit = can('subsidies.update');
   const received = docs.filter(d => d.status === 'received').length;
 
@@ -884,7 +884,7 @@ const DocumentsTab = ({ applicationId, docs, qc, can }) => {
       <div className="flex items-center justify-between mb-1">
         <p className="text-sm text-gray-500">
           <span className="font-semibold text-gray-800">{received}</span> of{' '}
-          <span className="font-semibold text-gray-800">{docs.length}</span> documents received
+          <span className="font-semibold text-gray-800">{docs.length}</span> {title.toLowerCase()} received
         </p>
         <span className="text-xs text-gray-400">{docs.length ? Math.round((received / docs.length) * 100) : 0}%</span>
       </div>
@@ -896,7 +896,7 @@ const DocumentsTab = ({ applicationId, docs, qc, can }) => {
       </div>
 
       {docs.length === 0 && (
-        <p className="text-center text-gray-400 py-8 text-sm">No documents configured.</p>
+        <p className="text-center text-gray-400 py-8 text-sm">No {title.toLowerCase()} configured.</p>
       )}
 
       {docs.map(doc => (
@@ -1044,22 +1044,29 @@ const Subsidies = () => {
     // Tabs disabled after rejection point
     const disabledTabs = new Set();
     if (sanctionRejected) {
-      ['goc-details', 'goc-creds', 'verification', 'claim', 'payment'].forEach(t => disabledTabs.add(t));
+      ['goc-details', 'goc-creds', 'goc-docs', 'verification', 'subsidy-docs', 'claim', 'payment'].forEach(t => disabledTabs.add(t));
     } else if (gocRejected) {
-      ['claim', 'payment'].forEach(t => disabledTabs.add(t));
+      ['subsidy-docs', 'claim', 'payment'].forEach(t => disabledTabs.add(t));
     } else if (claimRejected) {
       disabledTabs.add('payment');
     }
+
+    const allDocs = app.documentChecklist ?? [];
+    const gocDocs     = allDocs.filter(d => d.subCategory === 'goc');
+    const subsidyDocs = allDocs.filter(d => d.subCategory === 'subsidy');
+    // Docs with no subCategory fall into both tabs as fallback
+    const untaggedDocs = allDocs.filter(d => !d.subCategory);
 
     const tabs = [
       { id: 'info',         label: 'Info' },
       ...(isNhb ? [{ id: 'nhb', label: 'NHB Details' }] : []),
       { id: 'goc-details',  label: 'GOC' },
       { id: 'goc-creds',    label: 'GOC Portal' },
+      { id: 'goc-docs',     label: `GOC Docs (${gocDocs.length + untaggedDocs.length})` },
       { id: 'verification', label: 'Verification' },
+      { id: 'subsidy-docs', label: `Subsidy Docs (${subsidyDocs.length})` },
       { id: 'claim',        label: 'Subsidy Claim' },
       { id: 'payment',      label: 'Payment' },
-      { id: 'documents',    label: 'Documents' },
       { id: 'queries',      label: `Queries (${app.queries?.length ?? 0})` },
       { id: 'timeline',     label: 'Timeline' },
       { id: 'status',       label: 'Status' },
@@ -1193,6 +1200,28 @@ const Subsidies = () => {
             />
           )}
 
+          {/* GOC DOCUMENTS */}
+          {activeTab === 'goc-docs' && (
+            <DocumentsTab
+              applicationId={app._id ?? detailApp._id}
+              docs={[...gocDocs, ...untaggedDocs]}
+              qc={qc}
+              can={can}
+              title="GOC Documents"
+            />
+          )}
+
+          {/* SUBSIDY DOCUMENTS */}
+          {activeTab === 'subsidy-docs' && (
+            <DocumentsTab
+              applicationId={app._id ?? detailApp._id}
+              docs={subsidyDocs}
+              qc={qc}
+              can={can}
+              title="Subsidy Documents"
+            />
+          )}
+
           {/* VERIFICATION */}
           {activeTab === 'verification' && (
             <VerificationPanel
@@ -1218,16 +1247,6 @@ const Subsidies = () => {
               paymentDetails={app.paymentDetails}
               subsidyClaim={app.subsidyClaim}
               qc={qc} can={can}
-            />
-          )}
-
-          {/* DOCUMENTS */}
-          {activeTab === 'documents' && (
-            <DocumentsTab
-              applicationId={app._id ?? detailApp._id}
-              docs={app.documentChecklist ?? []}
-              qc={qc}
-              can={can}
             />
           )}
 
