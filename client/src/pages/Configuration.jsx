@@ -19,7 +19,9 @@ const DocTypeForm = ({ doc, type, onSuccess, onClose }) => {
   const isEdit = !!doc;
 
   const { register, handleSubmit } = useForm({
-    defaultValues: doc ? { name: doc.name, description: doc.description, required: doc.isRequired, displayOrder: doc.displayOrder } : { required: false, displayOrder: 99 },
+    defaultValues: doc
+      ? { name: doc.name, description: doc.description, required: doc.isRequired, displayOrder: doc.displayOrder, subCategory: doc.subCategory || '' }
+      : { required: false, displayOrder: 99, subCategory: '' },
   });
 
   const mutation = useMutation({
@@ -41,6 +43,17 @@ const DocTypeForm = ({ doc, type, onSuccess, onClose }) => {
         <textarea className="input-base resize-none" rows={2} {...register('description')} />
       </div>
       <Input label="Display Order" type="number" {...register('displayOrder')} />
+      {type === 'subsidy' && (
+        <div>
+          <label className="label-base">Document Category <span className="text-danger-500">*</span></label>
+          <select className="input-base" {...register('subCategory', { required: type === 'subsidy' ? 'Category is required for subsidy docs' : false })}>
+            <option value="">Select category…</option>
+            <option value="goc">GOC Documents</option>
+            <option value="subsidy">Subsidy Documents</option>
+          </select>
+          <p className="text-xs text-gray-400 mt-1">Determines which tab this document appears under in the subsidy detail view.</p>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <input type="checkbox" id="doc-required" className="h-4 w-4 rounded text-primary-600" {...register('required')} />
         <label htmlFor="doc-required" className="text-sm text-gray-700">Required document</label>
@@ -156,6 +169,11 @@ const Configuration = () => {
                       <p className="text-sm font-medium text-gray-800">{doc.name}</p>
                       <Badge color={doc.isRequired ? 'red' : 'gray'} size="sm">{doc.isRequired ? 'Required' : 'Optional'}</Badge>
                       <Badge color={doc.isActive ? 'green' : 'gray'} size="sm">{doc.isActive ? 'Active' : 'Inactive'}</Badge>
+                      {doc.subCategory && (
+                        <Badge color={doc.subCategory === 'goc' ? 'blue' : 'purple'} size="sm">
+                          {doc.subCategory === 'goc' ? 'GOC' : 'Subsidy'}
+                        </Badge>
+                      )}
                     </div>
                     {doc.description && <p className="text-xs text-gray-400 mt-0.5">{doc.description}</p>}
                   </div>
