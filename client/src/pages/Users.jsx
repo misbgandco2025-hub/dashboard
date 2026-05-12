@@ -38,7 +38,7 @@ const UserForm = ({ user, onSuccess, onClose }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Full Name" required error={errors.fullName?.message} {...register('fullName', { required: 'Required' })} />
         <Input label="Username" required error={errors.username?.message} {...register('username', { required: 'Required' })} />
-        <Input label="Email" type="email" required error={errors.email?.message} {...register('email', { required: 'Required' })} />
+        <Input label="Email" type="email" error={errors.email?.message} {...register('email')} />
         <Input label="Mobile" type="tel" error={errors.mobile?.message} {...register('mobile', { pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
         {!isEdit && (
           <Input label="Password" type="password" required placeholder="Min 8 characters"
