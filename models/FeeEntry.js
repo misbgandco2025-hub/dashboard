@@ -74,7 +74,6 @@ const feeEntrySchema = new mongoose.Schema(
     // Dates
     dueDate: {
       type: Date,
-      required: [true, 'Due date is required'],
     },
 
     invoiceDate: { type: Date, default: Date.now },
@@ -178,13 +177,5 @@ feeEntrySchema.methods.addPayment = async function (paymentData, userId) {
   return this.save();
 };
 
-feeEntrySchema.methods.isOverdue = function () {
-  return this.dueDate < new Date() && !['paid', 'waived', 'cancelled'].includes(this.status);
-};
-
-// ── Virtual for overdue flag ───────────────────────────────────────────────────
-feeEntrySchema.virtual('isOverdueFlag').get(function () {
-  return this.dueDate < new Date() && !['paid', 'waived', 'cancelled'].includes(this.status);
-});
 
 module.exports = mongoose.model('FeeEntry', feeEntrySchema);
