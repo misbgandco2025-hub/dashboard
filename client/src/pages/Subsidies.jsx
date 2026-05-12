@@ -1089,6 +1089,7 @@ const Subsidies = () => {
   useEffect(() => {
     if (location.state?.openApp) {
       setDetailApp(location.state.openApp);
+      if (location.state.initialTab) setActiveTab(location.state.initialTab);
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, []);
