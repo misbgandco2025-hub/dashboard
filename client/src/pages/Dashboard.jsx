@@ -16,6 +16,7 @@ import {
 } from '../services/dashboardService';
 import { getBankLoans } from '../services/bankLoanService';
 import { getSubsidies } from '../services/subsidyService';
+import { getClients } from '../services/clientService';
 import useAuth from '../hooks/useAuth';
 import usePageTitle from '../hooks/usePageTitle';
 import Loader from '../components/common/Loader';
@@ -52,8 +53,12 @@ const GradCard = ({ icon: Icon, label, value, sub, grad, onClick }) => (
 );
 
 // ── Flat Stat Card ────────────────────────────────────────────────────────────
-const FlatCard = ({ icon: Icon, label, value, sub, iconBg, iconColor, badge }) => (
-  <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex items-start gap-4">
+const FlatCard = ({ icon: Icon, label, value, sub, iconBg, iconColor, badge, onClick }) => (
+  <div
+    onClick={onClick}
+    className={`bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex items-start gap-4 transition-all duration-200
+      ${onClick ? 'cursor-pointer hover:shadow-md hover:border-gray-200 hover:scale-[1.01]' : ''}`}
+  >
     <div className={`p-3 rounded-xl shrink-0 ${iconBg}`}>
       <Icon className={`h-5 w-5 ${iconColor}`} />
     </div>
@@ -64,6 +69,7 @@ const FlatCard = ({ icon: Icon, label, value, sub, iconBg, iconColor, badge }) =
         {badge && <span className="mb-0.5 text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">{badge}</span>}
       </div>
       {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      {onClick && <p className="text-xs text-blue-500 mt-1 flex items-center gap-0.5 font-medium">Click to view <ChevronRight className="h-3 w-3" /></p>}
     </div>
   </div>
 );
@@ -84,38 +90,127 @@ const PipelineBar = ({ label, value, max, color }) => {
   );
 };
 
+// ── Drill-Down Config ─────────────────────────────────────────────────────────
+// drillKey format: '<mode>:<drillType>'  e.g. 'bank-loan:active', 'subsidy:pending-docs'
+const getDrillConfig = (drillKey) => {
+  if (!drillKey) return null;
+  const [mode, drillType] = drillKey.split(':');
+  const isBL = mode === 'bank-loan';
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const startOfYear  = new Date(now.getFullYear(), 0, 1).toISOString();
+
+  const configs = {
+    active: {
+      title: isBL ? 'Active Bank Loans' : 'Active Subsidies',
+      subtitle: 'All active applications',
+      gradFrom: isBL ? 'from-blue-600' : 'from-emerald-600',
+      gradTo:   isBL ? 'to-blue-400'   : 'to-emerald-400',
+      params: {},
+    },
+    'completed-month': {
+      title: 'Completed This Month',
+      subtitle: 'Completed / approved this month',
+      gradFrom: isBL ? 'from-violet-600' : 'from-teal-600',
+      gradTo:   isBL ? 'to-violet-400'   : 'to-teal-400',
+      params: {
+        currentStatus: isBL ? 'Disbursement Completed' : 'Subsidy Released',
+        from: startOfMonth,
+      },
+    },
+    'total-clients': {
+      title: 'Total Clients',
+      subtitle: 'All registered clients',
+      gradFrom: 'from-slate-700',
+      gradTo:   'to-slate-500',
+      isClients: true,
+      params: { limit: 100 },
+    },
+    'pending-docs': {
+      title: 'Pending Documents',
+      subtitle: 'Applications with missing documents',
+      gradFrom: 'from-amber-600',
+      gradTo:   'to-amber-400',
+      params: { hasPendingDocs: true },
+    },
+    'open-queries': {
+      title: 'Open Queries',
+      subtitle: 'Applications requiring follow-up',
+      gradFrom: 'from-red-600',
+      gradTo:   'to-red-400',
+      params: { hasOpenQuery: true },
+    },
+    'apps-year': {
+      title: 'Applications This Year',
+      subtitle: 'All applications created this year',
+      gradFrom: isBL ? 'from-blue-600' : 'from-emerald-600',
+      gradTo:   isBL ? 'to-sky-400'    : 'to-teal-400',
+      params: { from: startOfYear },
+    },
+  };
+  return { isBL, drillType, mode, ...configs[drillType] };
+};
+
 // ── Drill-Down Slide-Over ─────────────────────────────────────────────────────
-const DrillDownDrawer = ({ type, onClose, navigate }) => {
-  const isBL = type === 'bank-loan';
+const DrillDownDrawer = ({ drillKey, onClose, navigate }) => {
+  const cfg = getDrillConfig(drillKey);
+  if (!cfg) return null;
+  const { isBL, drillType, mode, title, subtitle, gradFrom, gradTo, isClients, params } = cfg;
+
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const { data, isLoading } = useQuery({
-    queryKey: ['drill-down', type],
-    queryFn: () => isBL ? getBankLoans({ limit: 100 }) : getSubsidies({ limit: 100 }),
-    select: (res) => res.data?.data ?? [],
-    enabled: !!type,
+    queryKey: ['drill-down', drillKey],
+    queryFn: () => {
+      if (isClients) return getClients({ ...params });
+      return isBL
+        ? getBankLoans({ limit: 100, ...params })
+        : getSubsidies({ limit: 100, ...params });
+    },
+    select: (res) => {
+      if (isClients) return res.data?.data ?? [];
+      return res.data?.data ?? [];
+    },
+    enabled: !!drillKey,
   });
 
-  const openApp = (app) => {
+  const openItem = (item) => {
     onClose();
-    navigate(isBL ? '/bank-loans' : '/subsidies', { state: { openApp: app } });
+    if (isClients) {
+      navigate('/clients', { state: { openClient: item } });
+    } else {
+      navigate(isBL ? '/bank-loans' : '/subsidies', { state: { openApp: item } });
+    }
   };
+
+  const viewAllPath = isClients ? '/clients' : (isBL ? '/bank-loans' : '/subsidies');
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Drawer */}
       <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-in-right">
         {/* Header */}
-        <div className={`p-5 flex items-center justify-between text-white bg-gradient-to-r ${isBL ? 'from-blue-600 to-blue-400' : 'from-emerald-600 to-emerald-400'}`}>
+        <div className={`p-5 flex items-center justify-between text-white bg-gradient-to-r ${gradFrom} ${gradTo}`}>
           <div>
-            <p className="text-xs opacity-80 uppercase tracking-wider">{isBL ? 'Bank Loans' : 'Subsidies'}</p>
-            <p className="text-lg font-bold mt-0.5">{isLoading ? '…' : `${data?.length ?? 0} Applications`}</p>
+            <p className="text-xs opacity-80 uppercase tracking-wider">
+              {isClients ? 'Clients' : (isBL ? 'Bank Loan' : 'Subsidy')}
+            </p>
+            <p className="text-lg font-bold mt-0.5">{title}</p>
+            <p className="text-xs opacity-70 mt-0.5">{subtitle}</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {/* Count badge */}
+        {!isLoading && (
+          <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+            <span className="text-xs font-semibold text-gray-500">
+              {data?.length ?? 0} {isClients ? 'clients' : 'applications'} found
+            </span>
+          </div>
+        )}
 
         {/* List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -124,10 +219,31 @@ const DrillDownDrawer = ({ type, onClose, navigate }) => {
               <div className="animate-spin h-7 w-7 border-4 border-blue-500 border-t-transparent rounded-full" />
             </div>
           ) : !data?.length ? (
-            <div className="text-center pt-12 text-gray-400 text-sm">No applications found</div>
+            <div className="text-center pt-12 text-gray-400 text-sm">No records found</div>
+          ) : isClients ? (
+            data.map((client) => (
+              <button key={client._id} onClick={() => openItem(client)}
+                className="w-full text-left bg-gray-50 hover:bg-slate-100 border border-gray-100 hover:border-slate-200 rounded-xl p-4 transition-all group">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-gray-900 text-sm">{client.name ?? '—'}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{client.clientId} · {client.mobile}</p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-white border border-gray-200 text-gray-600 capitalize">
+                        {client.sourceType ?? 'direct'}
+                      </span>
+                      {client.businessName && (
+                        <span className="text-xs text-gray-500 truncate max-w-[140px]">{client.businessName}</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-slate-500 shrink-0 ml-2 transition-colors" />
+                </div>
+              </button>
+            ))
           ) : (
             data.map((app) => (
-              <button key={app._id} onClick={() => openApp(app)}
+              <button key={app._id} onClick={() => openItem(app)}
                 className="w-full text-left bg-gray-50 hover:bg-blue-50 border border-gray-100 hover:border-blue-200 rounded-xl p-4 transition-all group">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
@@ -138,9 +254,7 @@ const DrillDownDrawer = ({ type, onClose, navigate }) => {
                         {app.currentStatus}
                       </span>
                       {isBL && app.loanAmount && (
-                        <span className="text-xs text-gray-500">
-                          ₹{Number(app.loanAmount).toLocaleString('en-IN')}
-                        </span>
+                        <span className="text-xs text-gray-500">₹{Number(app.loanAmount).toLocaleString('en-IN')}</span>
                       )}
                       {!isBL && app.schemeName && (
                         <span className="text-xs text-gray-500">{app.schemeName}</span>
@@ -155,9 +269,9 @@ const DrillDownDrawer = ({ type, onClose, navigate }) => {
         </div>
 
         <div className="p-4 border-t border-gray-100">
-          <button onClick={() => { onClose(); navigate(isBL ? '/bank-loans' : '/subsidies'); }}
-            className={`w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors ${isBL ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-            View All {isBL ? 'Bank Loans' : 'Subsidies'} →
+          <button onClick={() => { onClose(); navigate(viewAllPath); }}
+            className={`w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-colors bg-gradient-to-r ${gradFrom} ${gradTo} hover:opacity-90`}>
+            View All →
           </button>
         </div>
       </div>
@@ -182,7 +296,8 @@ const Dashboard = () => {
   const { isDataEntry } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState('bank-loan');
-  const [drillDown, setDrillDown] = useState(null); // 'bank-loan' | 'subsidy' | null
+  const [drillDown, setDrillDown] = useState(null); // '<mode>:<drillType>' | null
+  const drill = (type) => setDrillDown(`${mode}:${type}`);
 
   const { data: summary, isLoading } = useQuery({ queryKey: ['dashboard','summary'],    queryFn: getDashboardSummary,   select: r => r.data.data });
   const { data: statusDist }         = useQuery({ queryKey: ['dashboard','status-dist'], queryFn: getStatusDistribution, select: r => r.data.data });
@@ -208,7 +323,7 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       {drillDown && (
-        <DrillDownDrawer type={drillDown} onClose={() => setDrillDown(null)} navigate={navigate} />
+        <DrillDownDrawer drillKey={drillDown} onClose={() => setDrillDown(null)} navigate={navigate} />
       )}
 
       {/* Header */}
@@ -227,7 +342,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Gradient Cards — clickable active count */}
+      {/* Gradient Cards — all clickable */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <GradCard
           icon={isBL ? Landmark : HandCoins}
@@ -235,18 +350,18 @@ const Dashboard = () => {
           value={formatNumber(activeCount)}
           sub="Click to view applications"
           grad={isBL ? 'from-blue-600 to-blue-400' : 'from-emerald-600 to-emerald-400'}
-          onClick={() => setDrillDown(mode)}
+          onClick={() => drill('active')}
         />
-        <GradCard icon={CheckCircle2} label="Completed This Month" value={formatNumber(doneMonth)} sub={`${formatNumber(doneYear)} this year`} grad={isBL ? 'from-violet-600 to-violet-400' : 'from-teal-600 to-teal-400'} />
+        <GradCard icon={CheckCircle2} label="Completed This Month" value={formatNumber(doneMonth)} sub={`${formatNumber(doneYear)} this year`} grad={isBL ? 'from-violet-600 to-violet-400' : 'from-teal-600 to-teal-400'} onClick={() => drill('completed-month')} />
         <GradCard icon={TrendingUp} label="Monthly Success Rate" value={`${pct(doneMonth ?? 0, activeCount ?? 1)}%`} sub="completed vs active" grad="from-amber-500 to-orange-400" />
-        <GradCard icon={Users} label="Total Clients" value={formatNumber(s.totalClients)} sub={`${s.vendorClients?.percentage ?? 0}% via vendors`} grad="from-slate-700 to-slate-500" />
+        <GradCard icon={Users} label="Total Clients" value={formatNumber(s.totalClients)} sub={`${s.vendorClients?.percentage ?? 0}% via vendors`} grad="from-slate-700 to-slate-500" onClick={() => drill('total-clients')} />
       </div>
 
       {/* Alert Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <FlatCard icon={FileWarning} label="Pending Documents" value={formatNumber(isBL ? s.pendingDocumentsApplications?.bankLoans : s.pendingDocumentsApplications?.subsidies)} sub="applications missing docs" iconBg="bg-amber-50" iconColor="text-amber-600" />
-        <FlatCard icon={AlertTriangle} label="Open Queries" value={formatNumber(isBL ? s.openQueries?.bankLoans : s.openQueries?.subsidies)} sub="require follow-up" iconBg="bg-red-50" iconColor="text-red-600" />
-        <FlatCard icon={Activity} label="Applications This Year" value={formatNumber((s.completedThisYear?.total ?? 0) + (activeCount ?? 0))} sub={`${pct(s.completedThisYear?.total ?? 0, (s.completedThisYear?.total ?? 0) + (activeCount ?? 0))}% completion rate`} iconBg={`bg-${accent}-50`} iconColor={`text-${accent}-600`} badge={`${pct(s.directClients?.count ?? 0, s.totalClients ?? 1)}% Direct`} />
+        <FlatCard icon={FileWarning} label="Pending Documents" value={formatNumber(isBL ? s.pendingDocumentsApplications?.bankLoans : s.pendingDocumentsApplications?.subsidies)} sub="applications missing docs" iconBg="bg-amber-50" iconColor="text-amber-600" onClick={() => drill('pending-docs')} />
+        <FlatCard icon={AlertTriangle} label="Open Queries" value={formatNumber(isBL ? s.openQueries?.bankLoans : s.openQueries?.subsidies)} sub="require follow-up" iconBg="bg-red-50" iconColor="text-red-600" onClick={() => drill('open-queries')} />
+        <FlatCard icon={Activity} label="Applications This Year" value={formatNumber((s.completedThisYear?.total ?? 0) + (activeCount ?? 0))} sub={`${pct(s.completedThisYear?.total ?? 0, (s.completedThisYear?.total ?? 0) + (activeCount ?? 0))}% completion rate`} iconBg={`bg-${accent}-50`} iconColor={`text-${accent}-600`} badge={`${pct(s.directClients?.count ?? 0, s.totalClients ?? 1)}% Direct`} onClick={() => drill('apps-year')} />
       </div>
 
       {/* Charts Row */}
