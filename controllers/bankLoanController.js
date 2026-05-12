@@ -36,6 +36,8 @@ const getApplications = async (req, res, next) => {
       if (req.query.from) filter.applicationDate.$gte = new Date(req.query.from);
       if (req.query.to) filter.applicationDate.$lte = new Date(req.query.to);
     }
+    if (req.query.hasPendingDocs === 'true') filter['documentChecklist.status'] = 'pending';
+    if (req.query.hasOpenQuery === 'true') filter['queries.status'] = { $in: ['open', 'in-progress'] };
 
     const [apps, total] = await Promise.all([
       BankLoanApplication.find(filter)
