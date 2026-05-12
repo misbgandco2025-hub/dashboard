@@ -862,8 +862,8 @@ const Fees = () => {
   const debounced = useDebounce(search);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['fees', { search: debounced, page, limit, status: statusFilter, overdue: overdueOnly }],
-    queryFn: () => getFees({ search: debounced, page, limit, status: statusFilter || undefined, overdue: overdueOnly || undefined }),
+    queryKey: ['fees', { search: debounced, page, limit, status: statusFilter }],
+    queryFn: () => getFees({ search: debounced, page, limit, status: statusFilter || undefined }),
     select: (res) => res.data,
   });
 
