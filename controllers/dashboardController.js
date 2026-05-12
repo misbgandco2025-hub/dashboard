@@ -46,27 +46,25 @@ const getSummary = async (req, res, next) => {
       completedSubYear,
       vendorClients,
       directClients,
-      openQueries,
+      blOpenQueries,
+      subOpenQueries,
+      blWithPending,
+      subWithPending,
     ] = await Promise.all([
       Client.countDocuments({ isDeleted: false }),
       BankLoanApplication.countDocuments(blFilter),
       SubsidyApplication.countDocuments(subFilter),
-      BankLoanApplication.countDocuments({ isDeleted: false, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfMonth } }),
-      SubsidyApplication.countDocuments({ isDeleted: false, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfMonth } }),
-      BankLoanApplication.countDocuments({ isDeleted: false, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfYear } }),
-      SubsidyApplication.countDocuments({ isDeleted: false, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfYear } }),
+      BankLoanApplication.countDocuments({ ...blFilter, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfMonth } }),
+      SubsidyApplication.countDocuments({ ...subFilter, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfMonth } }),
+      BankLoanApplication.countDocuments({ ...blFilter, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfYear } }),
+      SubsidyApplication.countDocuments({ ...subFilter, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfYear } }),
       Client.countDocuments({ isDeleted: false, sourceType: 'vendor' }),
       Client.countDocuments({ isDeleted: false, sourceType: 'direct' }),
-      BankLoanApplication.countDocuments({ isDeleted: false, 'queries.status': { $in: ['open', 'in-progress'] } }),
+      BankLoanApplication.countDocuments({ ...blFilter, 'queries.status': { $in: ['open', 'in-progress'] } }),
+      SubsidyApplication.countDocuments({ ...subFilter, 'queries.status': { $in: ['open', 'in-progress'] } }),
+      BankLoanApplication.countDocuments({ ...blFilter, 'documentChecklist.status': 'pending' }),
+      SubsidyApplication.countDocuments({ ...subFilter, 'documentChecklist.status': 'pending' }),
     ]);
-
-    // Pending documents count
-    const blWithPending = await BankLoanApplication.countDocuments({
-      isDeleted: false, 'documentChecklist.status': 'pending',
-    });
-    const subWithPending = await SubsidyApplication.countDocuments({
-      isDeleted: false, 'documentChecklist.status': 'pending',
-    });
 
     return ApiResponse.success(res, 'Dashboard summary retrieved', {
       totalClients,
@@ -74,8 +72,8 @@ const getSummary = async (req, res, next) => {
       activeSubsidies,
       completedThisMonth: { bankLoans: completedBLMonth, subsidies: completedSubMonth, total: completedBLMonth + completedSubMonth },
       completedThisYear: { bankLoans: completedBLYear, subsidies: completedSubYear, total: completedBLYear + completedSubYear },
-      pendingDocumentsApplications: blWithPending + subWithPending,
-      openQueries,
+      pendingDocumentsApplications: { bankLoans: blWithPending, subsidies: subWithPending, total: blWithPending + subWithPending },
+      openQueries: { bankLoans: blOpenQueries, subsidies: subOpenQueries, total: blOpenQueries + subOpenQueries },
       vendorClients: { count: vendorClients, percentage: totalClients ? Math.round((vendorClients / totalClients) * 100) : 0 },
       directClients: { count: directClients, percentage: totalClients ? Math.round((directClients / totalClients) * 100) : 0 },
     });
