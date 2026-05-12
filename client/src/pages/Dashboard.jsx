@@ -244,8 +244,8 @@ const Dashboard = () => {
 
       {/* Alert Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <FlatCard icon={FileWarning} label="Pending Documents" value={formatNumber(s.pendingDocumentsApplications)} sub="applications missing docs" iconBg="bg-amber-50" iconColor="text-amber-600" />
-        <FlatCard icon={AlertTriangle} label="Open Queries" value={formatNumber(s.openQueries)} sub="require follow-up" iconBg="bg-red-50" iconColor="text-red-600" />
+        <FlatCard icon={FileWarning} label="Pending Documents" value={formatNumber(isBL ? s.pendingDocumentsApplications?.bankLoans : s.pendingDocumentsApplications?.subsidies)} sub="applications missing docs" iconBg="bg-amber-50" iconColor="text-amber-600" />
+        <FlatCard icon={AlertTriangle} label="Open Queries" value={formatNumber(isBL ? s.openQueries?.bankLoans : s.openQueries?.subsidies)} sub="require follow-up" iconBg="bg-red-50" iconColor="text-red-600" />
         <FlatCard icon={Activity} label="Applications This Year" value={formatNumber((s.completedThisYear?.total ?? 0) + (activeCount ?? 0))} sub={`${pct(s.completedThisYear?.total ?? 0, (s.completedThisYear?.total ?? 0) + (activeCount ?? 0))}% completion rate`} iconBg={`bg-${accent}-50`} iconColor={`text-${accent}-600`} badge={`${pct(s.directClients?.count ?? 0, s.totalClients ?? 1)}% Direct`} />
       </div>
 
