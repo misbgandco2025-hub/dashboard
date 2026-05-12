@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Eye, Trash2, ChevronRight, X, TrendingUp,
-  Receipt, IndianRupee, Clock, CheckCircle2, AlertCircle, Filter,
+  Receipt, IndianRupee, Clock, CheckCircle2, Filter,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useForm } from 'react-hook-form';
