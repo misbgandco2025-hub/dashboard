@@ -20,7 +20,14 @@ const UserForm = ({ user, onSuccess, onClose }) => {
   const isEdit = !!user;
 
   const { register, handleSubmit, formState: { errors }, watch } = useForm({
-    defaultValues: user ? { fullName: user.fullName, email: user.email, mobile: user.mobile, username: user.username, role: user.role, status: user.status } : { role: 'data-entry', status: 'active' },
+    defaultValues: user ? { 
+      fullName: user.fullName, 
+      email: user.email?.startsWith('no-email-') ? '' : user.email, 
+      mobile: user.mobile, 
+      username: user.username, 
+      role: user.role, 
+      status: user.status 
+    } : { role: 'data-entry', status: 'active' },
   });
 
   const mutation = useMutation({
@@ -100,7 +107,7 @@ const Users = () => {
   const columns = [
     { key: 'username', label: 'Username' },
     { key: 'fullName', label: 'Full Name' },
-    { key: 'email', label: 'Email' },
+    { key: 'email', label: 'Email', render: (row) => row.email?.startsWith('no-email-') ? <span className="text-gray-400 italic">Not provided</span> : row.email },
     { key: 'mobile', label: 'Mobile' },
     { key: 'role', label: 'Role', render: (row) => <Badge color={ROLE_COLORS[row.role] || 'gray'} className="capitalize">{row.role?.replace('-', ' ')}</Badge> },
     { key: 'status', label: 'Status', render: (row) => <Badge color={row.status === 'active' ? 'green' : 'gray'}>{row.status}</Badge> },
