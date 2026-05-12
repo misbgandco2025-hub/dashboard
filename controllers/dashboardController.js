@@ -29,8 +29,8 @@ const getSummary = async (req, res, next) => {
       blFilter.clientId = { $in: clientIds };
       subFilter.clientId = { $in: clientIds };
     }
-    if (type === 'bank-loan') delete subFilter;
-    if (type === 'subsidy') delete blFilter;
+    const useBlFilter = type !== 'subsidy' ? blFilter : null;
+    const useSubFilter = type !== 'bank-loan' ? subFilter : null;
 
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -52,18 +52,18 @@ const getSummary = async (req, res, next) => {
       subWithPending,
     ] = await Promise.all([
       Client.countDocuments({ isDeleted: false }),
-      BankLoanApplication.countDocuments(blFilter),
-      SubsidyApplication.countDocuments(subFilter),
-      BankLoanApplication.countDocuments({ ...blFilter, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfMonth } }),
-      SubsidyApplication.countDocuments({ ...subFilter, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfMonth } }),
-      BankLoanApplication.countDocuments({ ...blFilter, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfYear } }),
-      SubsidyApplication.countDocuments({ ...subFilter, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfYear } }),
+      useBlFilter ? BankLoanApplication.countDocuments(useBlFilter) : Promise.resolve(0),
+      useSubFilter ? SubsidyApplication.countDocuments(useSubFilter) : Promise.resolve(0),
+      useBlFilter ? BankLoanApplication.countDocuments({ ...useBlFilter, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfMonth } }) : Promise.resolve(0),
+      useSubFilter ? SubsidyApplication.countDocuments({ ...useSubFilter, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfMonth } }) : Promise.resolve(0),
+      useBlFilter ? BankLoanApplication.countDocuments({ ...useBlFilter, currentStatus: { $in: ['Approved', 'Disbursement Completed'] }, updatedAt: { $gte: startOfYear } }) : Promise.resolve(0),
+      useSubFilter ? SubsidyApplication.countDocuments({ ...useSubFilter, currentStatus: { $in: ['Approved', 'Subsidy Released'] }, updatedAt: { $gte: startOfYear } }) : Promise.resolve(0),
       Client.countDocuments({ isDeleted: false, sourceType: 'vendor' }),
       Client.countDocuments({ isDeleted: false, sourceType: 'direct' }),
-      BankLoanApplication.countDocuments({ ...blFilter, 'queries.status': { $in: ['open', 'in-progress'] } }),
-      SubsidyApplication.countDocuments({ ...subFilter, 'queries.status': { $in: ['open', 'in-progress'] } }),
-      BankLoanApplication.countDocuments({ ...blFilter, 'documentChecklist.status': 'pending' }),
-      SubsidyApplication.countDocuments({ ...subFilter, 'documentChecklist.status': 'pending' }),
+      useBlFilter ? BankLoanApplication.countDocuments({ ...useBlFilter, 'queries.status': { $in: ['open', 'in-progress'] } }) : Promise.resolve(0),
+      useSubFilter ? SubsidyApplication.countDocuments({ ...useSubFilter, 'queries.status': { $in: ['open', 'in-progress'] } }) : Promise.resolve(0),
+      useBlFilter ? BankLoanApplication.countDocuments({ ...useBlFilter, 'documentChecklist.status': 'pending' }) : Promise.resolve(0),
+      useSubFilter ? SubsidyApplication.countDocuments({ ...useSubFilter, 'documentChecklist.status': 'pending' }) : Promise.resolve(0),
     ]);
 
     return ApiResponse.success(res, 'Dashboard summary retrieved', {
