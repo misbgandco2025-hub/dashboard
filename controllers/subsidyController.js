@@ -12,11 +12,11 @@ const populateOptions = [
     select: 'clientId name email mobile businessName bankName branchName vendorId sourceType',
     populate: { path: 'vendorId', select: 'vendorName vendorCode' },
   },
-  { path: 'assignedTo',  select: 'fullName username' },
-  { path: 'createdBy',   select: 'fullName username' },
+  { path: 'assignedTo', select: 'fullName username' },
+  { path: 'createdBy', select: 'fullName username' },
   { path: 'documentChecklist.documentType', select: 'name required subCategory' },
-  { path: 'queries.assignedTo',             select: 'fullName username' },
-  { path: 'timeline.performedBy',           select: 'fullName username' },
+  { path: 'queries.assignedTo', select: 'fullName username' },
+  { path: 'timeline.performedBy', select: 'fullName username' },
 ];
 
 // Lightweight populate for list queries (avoids heavy sub-doc population on lists)
@@ -29,32 +29,26 @@ const listPopulateOptions = [
   { path: 'assignedTo', select: 'fullName username' },
 ];
 
-// ── Claim status migration map (old → new) ────────────────────────────────────
-const CLAIM_STATUS_MIGRATION = {
-  'not-submitted': 'pending',
-  'submitted':     'applied',
-  'approved':      'in-process',
-  'disbursed':     'complete',
-};
-
 // ── Derive currentStatus from sub-document states ────────────────────────────
 const deriveStatus = (app) => {
   // Walk backwards from the END of the workflow
-  if (app.paymentDetails?.paymentReceived)                                return 'Payment Received';
-  if (app.subsidyClaim?.claimStatus === 'complete')                       return 'Claim Complete';
-  if (app.subsidyClaim?.claimStatus === 'rejected')                       return 'Claim Rejected';
-  if (app.subsidyClaim?.claimStatus === 'in-process')                     return 'Claim In Process';
-  if (app.subsidyClaim?.claimStatus === 'applied')                        return 'Claim Applied';
-  if (app.subsidyClaim?.claimStatus === 'pending' &&
-      app.gocDetails?.gocStatus === 'approved')                           return 'Claim Pending';
-  if (app.gocDetails?.gocStatus === 'rejected')                           return 'GOC Rejected';
-  if (app.gocDetails?.gocStatus === 'approved')                           return 'GOC Approved';
-  if (app.gocDetails?.gocStatus === 'query')                              return 'GOC Query Raised';
-  if (app.gocDetails?.gocStatus === 'applied')                            return 'GOC Application Submitted';
-  if (app.gocCredentials?.email || app.gocCredentials?.mobile)           return 'GOC Portal Setup';
-  // Document completion
-  if (app.documentChecklist?.length > 0 &&
-      app.documentChecklist.every(d => d.status === 'received'))          return 'Documentation Completed';
+  if (app.paymentDetails?.paymentReceived) return 'Payment Received';
+  if (app.subsidyClaim?.claimStatus === 'disbursed') return 'Subsidy Disbursed';
+  if (app.subsidyClaim?.claimStatus === 'rejected') return 'Subsidy Claim Rejected';
+  if (app.subsidyClaim?.claimStatus === 'approved') return 'Subsidy Claim Approved';
+  if (app.subsidyClaim?.claimStatus === 'submitted') return 'Subsidy Claim Submitted';
+  if (app.gocDetails?.gocStatus === 'rejected') return 'GOC Rejected';
+  if (app.gocDetails?.gocStatus === 'approved') return 'GOC Approved';
+  if (app.gocDetails?.gocStatus === 'applied') return 'GOC Application Submitted';
+  if (app.nhbDetails?.nhbPortalStatus &&
+    ['goc-processing', 'query-issued', 'query-replied'].includes(app.nhbDetails.nhbPortalStatus)) return 'GOC Processing';
+  if (app.bankLoanSanction?.sanctionStatus === 'rejected') return 'Bank Loan Rejected';
+  if (app.bankLoanSanction?.sanctionStatus === 'sanctioned') return 'Bank Loan Sanctioned';
+  if (app.bankSubmission?.submissionStatus === 'under-review') return 'Under Bank Review';
+  if (app.bankSubmission?.submissionStatus === 'submitted') return 'File Submitted to Bank';
+  if (['in-progress', 'ready'].includes(app.loanPreparation?.preparationStatus)) return 'Loan Preparation';
+  // Check document completion
+  if (app.documentChecklist?.length > 0 && app.documentChecklist.every(d => d.status === 'received')) return 'Documentation Completed';
   return 'Documentation In Progress';
 };
 
@@ -68,32 +62,34 @@ const getApplications = async (req, res, next) => {
     if (req.query.search) {
       filter.$or = [
         { applicationId: { $regex: req.query.search, $options: 'i' } },
-        { schemeName:    { $regex: req.query.search, $options: 'i' } },
-        { departmentName:{ $regex: req.query.search, $options: 'i' } },
+        { schemeName: { $regex: req.query.search, $options: 'i' } },
+        { departmentName: { $regex: req.query.search, $options: 'i' } },
       ];
     }
 
     // Existing filters
     if (req.query.currentStatus) filter.currentStatus = req.query.currentStatus;
-    if (req.query.priority)      filter.priority = req.query.priority;
-    if (req.query.clientId)      filter.clientId = req.query.clientId;
-    if (req.query.assignedTo)    filter.assignedTo = req.query.assignedTo;
+    if (req.query.priority) filter.priority = req.query.priority;
+    if (req.query.clientId) filter.clientId = req.query.clientId;
+    if (req.query.assignedTo) filter.assignedTo = req.query.assignedTo;
     if (req.query.from || req.query.to) {
       filter.applicationDate = {};
       if (req.query.from) filter.applicationDate.$gte = new Date(req.query.from);
-      if (req.query.to)   filter.applicationDate.$lte = new Date(req.query.to);
+      if (req.query.to) filter.applicationDate.$lte = new Date(req.query.to);
     }
 
     // ── Filters ───────────────────────────────────────────────────────────────
-    if (req.query.schemeType)                 filter.schemeType = req.query.schemeType;
-    if (req.query.nhbPortalStatus)            filter['nhbDetails.nhbPortalStatus'] = req.query.nhbPortalStatus;
-    if (req.query.gocBankVerificationStatus)  filter.gocBankVerificationStatus = req.query.gocBankVerificationStatus;
-    if (req.query.geoTaggingStatus)           filter.geoTaggingStatus = req.query.geoTaggingStatus;
-    if (req.query.sanctionStatus)             filter['bankLoanSanction.sanctionStatus'] = req.query.sanctionStatus;
-    if (req.query.claimStatus)                filter['subsidyClaim.claimStatus'] = req.query.claimStatus;
+    if (req.query.schemeType) filter.schemeType = req.query.schemeType;
+    if (req.query.nhbPortalStatus) filter['nhbDetails.nhbPortalStatus'] = req.query.nhbPortalStatus;
+    if (req.query.gocBankVerificationStatus) filter.gocBankVerificationStatus = req.query.gocBankVerificationStatus;
+    if (req.query.geoTaggingStatus) filter.geoTaggingStatus = req.query.geoTaggingStatus;
+    if (req.query.sanctionStatus) filter['bankLoanSanction.sanctionStatus'] = req.query.sanctionStatus;
+    if (req.query.claimStatus) filter['subsidyClaim.claimStatus'] = req.query.claimStatus;
     if (req.query.paymentReceived !== undefined && req.query.paymentReceived !== '') {
       filter['paymentDetails.paymentReceived'] = req.query.paymentReceived === 'true';
     }
+    if (req.query.hasPendingDocs === 'true') filter['documentChecklist.status'] = 'pending';
+    if (req.query.hasOpenQuery === 'true') filter['queries.status'] = { $in: ['open', 'in-progress'] };
 
 
     const [apps, total] = await Promise.all([
@@ -122,7 +118,7 @@ const createApplication = async (req, res, next) => {
     const documentChecklist = fields.map(f => ({
       documentType: f._id,
       documentName: f.name,
-      subCategory:  f.subCategory,
+      subCategory: f.subCategory,
       isRequired: f.required,
       status: 'pending',
     }));
@@ -173,37 +169,50 @@ const getApplicationById = async (req, res, next) => {
 const updateApplication = async (req, res, next) => {
   try {
     const filter = { _id: req.params.id, isDeleted: false };
-    
+
     const app = await SubsidyApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
     // ── Capture previous values for timeline comparison ─────────────────────
     const prevBankVerifStatus = app.gocBankVerificationStatus;
-    const prevGeoTagStatus    = app.geoTaggingStatus;
+    const prevGeoTagStatus = app.geoTaggingStatus;
 
     // ── Business Rule Validations ───────────────────────────────────────────
 
-    // If GOC rejected, block claim and payment updates
-    if (app.gocDetails?.gocStatus === 'rejected') {
-      if (req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
-        return next(ApiError.badRequest('Case closed: GOC was rejected. Claim and payment cannot be updated.'));
+    // Rejection hard-stop: if sanction rejected, block all downstream updates
+    if (app.bankLoanSanction?.sanctionStatus === 'rejected') {
+      if (req.body.gocDetails || req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
+        return next(ApiError.badRequest('Case closed: bank loan was rejected. No further updates allowed.'));
       }
     }
-    // Claim requires GOC approved
-    if (req.body.subsidyClaim?.claimStatus &&
-        req.body.subsidyClaim.claimStatus !== 'pending' &&
-        app.gocDetails?.gocStatus !== 'approved') {
-      return next(ApiError.badRequest('Subsidy claim requires GOC to be approved first.'));
+    // If GOC rejected, block claim and payment
+    if (app.gocDetails?.gocStatus === 'rejected') {
+      if (req.body.subsidyClaim || req.body.paymentDetails?.paymentReceived) {
+        return next(ApiError.badRequest('Case closed: GOC was rejected. No further updates allowed.'));
+      }
     }
-    // Payment requires claim complete
-    if (req.body.paymentDetails?.paymentReceived === true &&
-        app.subsidyClaim?.claimStatus !== 'complete') {
-      return next(ApiError.badRequest('Payment cannot be recorded before subsidy claim is complete.'));
+    // If claim rejected, block payment
+    if (app.subsidyClaim?.claimStatus === 'rejected') {
+      if (req.body.paymentDetails?.paymentReceived) {
+        return next(ApiError.badRequest('Case closed: subsidy claim was rejected. No further updates allowed.'));
+      }
     }
 
-    // ── Migrate legacy claimStatus values on the fly ──────────────────────────
-    if (app.subsidyClaim?.claimStatus && CLAIM_STATUS_MIGRATION[app.subsidyClaim.claimStatus]) {
-      app.subsidyClaim.claimStatus = CLAIM_STATUS_MIGRATION[app.subsidyClaim.claimStatus];
+    if (req.body.gocDetails && req.body.gocDetails.gocStatus &&
+      req.body.gocDetails.gocStatus !== 'not-started' &&
+      app.bankLoanSanction?.sanctionStatus !== 'sanctioned') {
+      return next(ApiError.badRequest('GOC application requires bank loan to be sanctioned first.'));
+    }
+
+    if (req.body.subsidyClaim && req.body.subsidyClaim.claimStatus &&
+      req.body.subsidyClaim.claimStatus !== 'not-submitted' &&
+      app.gocDetails?.gocStatus !== 'approved') {
+      return next(ApiError.badRequest('Subsidy claim requires GOC to be approved first.'));
+    }
+
+    if (req.body.paymentDetails?.paymentReceived === true &&
+      app.subsidyClaim?.claimStatus !== 'disbursed') {
+      return next(ApiError.badRequest('Payment cannot be marked received before subsidy is disbursed.'));
     }
 
     // ── Scalar / flat fields ──────────────────────────────────────────────────
@@ -227,7 +236,7 @@ const updateApplication = async (req, res, next) => {
     if (req.body.nhbDetails) {
       const nd = req.body.nhbDetails;
       if (!app.nhbDetails) app.nhbDetails = {};
-      if (nd.nhbId          !== undefined) app.nhbDetails.nhbId         = nd.nhbId;
+      if (nd.nhbId !== undefined) app.nhbDetails.nhbId = nd.nhbId;
       if (nd.nhbProjectCode !== undefined) app.nhbDetails.nhbProjectCode = nd.nhbProjectCode;
       if (nd.nhbPortalStatus !== undefined) {
         const prevNhbStatus = app.nhbDetails.nhbPortalStatus;
@@ -437,7 +446,7 @@ const updateStatus = async (req, res, next) => {
     if (!status) return next(ApiError.badRequest('Status is required.'));
 
     const filter = { _id: req.params.id, isDeleted: false };
-    
+
     const app = await SubsidyApplication.findOne(filter);
     if (!app) return next(ApiError.notFound('Application not found.'));
 
@@ -476,13 +485,13 @@ const updateDocumentChecklist = async (req, res, next) => {
     if (!doc) return next(ApiError.notFound('Document not found in checklist.'));
 
     const prev = doc.status;
-    if (status)        doc.status = status;
-    if (remarks)       doc.remarks = remarks;
+    if (status) doc.status = status;
+    if (remarks) doc.remarks = remarks;
     if (requestedDate) doc.requestedDate = requestedDate;
-    if (receivedDate)  doc.receivedDate = receivedDate;
+    if (receivedDate) doc.receivedDate = receivedDate;
     if (submittedDate) doc.submittedDate = submittedDate;
-    if (verifiedDate)  doc.verifiedDate = verifiedDate;
-    if (verifiedBy)    doc.verifiedBy = verifiedBy;
+    if (verifiedDate) doc.verifiedDate = verifiedDate;
+    if (verifiedBy) doc.verifiedBy = verifiedBy;
 
     app.timeline.push({
       activity: `Document "${doc.documentName}" updated to "${status}"`,
@@ -620,15 +629,15 @@ const updateGocCredentials = async (req, res, next) => {
     if (!app) return next(ApiError.notFound('Application not found.'));
 
     if (!app.gocCredentials) app.gocCredentials = {};
-    if (email    !== undefined) app.gocCredentials.email  = email;
-    if (mobile   !== undefined) app.gocCredentials.mobile = mobile;
+    if (email !== undefined) app.gocCredentials.email = email;
+    if (mobile !== undefined) app.gocCredentials.mobile = mobile;
     if (password) app.gocCredentials._passwordEncrypted = encryptText(password);
 
     app.markModified('gocCredentials');
     await app.save();
     return ApiResponse.success(res, 'GOC credentials saved', {
-      email:       app.gocCredentials.email,
-      mobile:      app.gocCredentials.mobile,
+      email: app.gocCredentials.email,
+      mobile: app.gocCredentials.mobile,
       hasPassword: !!app.gocCredentials._passwordEncrypted,
     });
   } catch (err) {
@@ -657,10 +666,10 @@ const syncDocuments = async (req, res, next) => {
       if (!existingIds.has(String(f._id))) {
         // Missing entirely — add it
         app.documentChecklist.push({
-          documentType:  f._id,
-          documentName:  f.name,
-          subCategory:   f.subCategory,
-          status:        'pending',
+          documentType: f._id,
+          documentName: f.name,
+          subCategory: f.subCategory,
+          status: 'pending',
         });
         added++;
       } else {
