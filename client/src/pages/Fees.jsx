@@ -67,11 +67,6 @@ const STATUS_COLORS = {
 
 const FEE_TYPE_LABELS = Object.fromEntries(FEE_TYPES.map((t) => [t.value, t.label]));
 
-// ─── Helper: is overdue ────────────────────────────────────────────────────────
-const isOverdue = (fee) =>
-  fee.dueDate &&
-  new Date(fee.dueDate) < new Date() &&
-  !['paid', 'waived', 'cancelled'].includes(fee.status);
 
 // ─── Analytics Banner ─────────────────────────────────────────────────────────
 const AnalyticsBanner = ({ period, onPeriodChange }) => {
@@ -103,14 +98,7 @@ const AnalyticsBanner = ({ period, onPeriodChange }) => {
       color: 'text-amber-600 bg-amber-50',
       border: 'border-amber-200',
     },
-    {
-      label: 'Overdue',
-      value: data?.overdueCount ?? 0,
-      suffix: ' entries',
-      icon: AlertCircle,
-      color: 'text-red-600 bg-red-50',
-      border: 'border-red-200',
-    },
+
     {
       label: 'Collection Rate',
       value: `${data?.collectionRate ?? 0}%`,
@@ -555,7 +543,6 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
   });
 
   const fee = freshFee ?? listFee;
-  const overdue = isOverdue(fee);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteFee(fee._id),
@@ -586,8 +573,8 @@ const FeeDetail = ({ fee: listFee, onBack }) => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Badge color={overdue ? 'red' : (STATUS_COLORS[fee.status] || 'gray')}>
-            {overdue ? 'Overdue' : fee.status}
+          <Badge color={STATUS_COLORS[fee.status] || 'gray'}>
+            {fee.status}
           </Badge>
         </div>
       </div>
@@ -865,7 +852,7 @@ const Fees = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [statusFilter, setStatusFilter] = useState('');
-  const [overdueOnly, setOverdueOnly] = useState(false);
+
   const [createModal, setCreateModal] = useState(false);
   const [detailFee, setDetailFee] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -895,7 +882,7 @@ const Fees = () => {
     return <FeeDetail fee={detailFee} onBack={() => setDetailFee(null)} />;
   }
 
-  const hasFilters = statusFilter || overdueOnly;
+  const hasFilters = !!statusFilter;
 
   const columns = [
     {
@@ -942,34 +929,28 @@ const Fees = () => {
     },
     {
       key: 'pendingAmount', label: 'Pending',
-      render: (row) => {
-        const overdue = isOverdue(row);
-        return (
-          <div>
-            <span className={`text-sm font-semibold ${overdue ? 'text-red-600' : 'text-gray-700'}`}>
-              {formatCurrency(row.pendingAmount)}
-            </span>
-            {overdue && <p className="text-[10px] text-red-500 font-medium">Overdue</p>}
-          </div>
-        );
-      },
+      render: (row) => (
+        <div>
+          <span className="text-sm font-semibold text-gray-700">
+            {formatCurrency(row.pendingAmount)}
+          </span>
+          {row.pendingAmount > 0 && <p className="text-[10px] text-gray-400 font-medium">Pending</p>}
+        </div>
+      ),
     },
     {
       key: 'dueDate', label: 'Due Date',
-      render: (row) => {
-        const overdue = isOverdue(row);
-        return (
-          <span className={`text-sm ${overdue ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
-            {formatDate(row.dueDate)}
-          </span>
-        );
-      },
+      render: (row) => (
+        <span className="text-sm text-gray-600">
+          {formatDate(row.dueDate)}
+        </span>
+      ),
     },
     {
       key: 'status', label: 'Status',
       render: (row) => (
-        <Badge color={isOverdue(row) ? 'red' : (STATUS_COLORS[row.status] || 'gray')}>
-          {isOverdue(row) ? 'Overdue' : row.status}
+        <Badge color={STATUS_COLORS[row.status] || 'gray'}>
+          {row.status}
         </Badge>
       ),
     },
@@ -1025,9 +1006,7 @@ const Fees = () => {
             <Filter className="h-4 w-4" />
             Filters
             {hasFilters && (
-              <span className="ml-1 h-5 w-5 rounded-full bg-primary-600 text-white text-xs flex items-center justify-center">
-                {[statusFilter, overdueOnly].filter(Boolean).length}
-              </span>
+              <span className="ml-1 h-5 w-5 rounded-full bg-primary-600 text-white text-xs flex items-center justify-center">1</span>
             )}
           </button>
           {filterOpen && (
@@ -1048,15 +1027,9 @@ const Fees = () => {
                   <option value="cancelled">Cancelled</option>
                 </select>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={overdueOnly}
-                  onChange={(e) => { setOverdueOnly(e.target.checked); setPage(1); }}
-                  className="rounded text-primary-600" />
-                <span className="text-sm text-gray-700">Overdue only</span>
-              </label>
               {hasFilters && (
                 <button
-                  onClick={() => { setStatusFilter(''); setOverdueOnly(false); setPage(1); setFilterOpen(false); }}
+                  onClick={() => { setStatusFilter(''); setPage(1); setFilterOpen(false); }}
                   className="w-full text-sm text-danger-600 hover:text-danger-700 font-medium pt-1"
                 >
                   Clear Filters
