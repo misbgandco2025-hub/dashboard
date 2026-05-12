@@ -43,7 +43,7 @@ const createUser = async (req, res, next) => {
       const existingEmail = await User.findOne({ email });
       if (existingEmail) return next(ApiError.conflict('Email already exists.'));
     } else {
-      emailToSave = undefined; // prevent empty string unique constraint violation
+      emailToSave = `no-email-${Date.now()}-${Math.floor(Math.random() * 10000)}@dummy.local`;
     }
 
     const user = await User.create({ username, email: emailToSave, password, fullName, role, mobile });
@@ -75,7 +75,7 @@ const updateUser = async (req, res, next) => {
     allowed.forEach((f) => { 
       if (req.body[f] !== undefined) {
         if (f === 'email' && req.body[f] === '') {
-          updates.$unset[f] = 1;
+          updates.$set[f] = `no-email-${Date.now()}-${Math.floor(Math.random() * 10000)}@dummy.local`;
         } else {
           updates.$set[f] = req.body[f]; 
         }
