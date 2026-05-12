@@ -59,10 +59,6 @@ const getAllFees = async (req, res, next) => {
     if (applicationId) filter.applicationId = applicationId;
     if (status) filter.status = status;
 
-    if (overdue === 'true') {
-      filter.dueDate = { $lt: new Date() };
-      filter.status = { $nin: ['paid', 'waived', 'cancelled'] };
-    }
 
     if (search) {
       filter.$or = [
@@ -152,12 +148,6 @@ const getFeeAnalytics = async (req, res, next) => {
       ]),
     ]);
 
-    const overdueCount = await FeeEntry.countDocuments({
-      isDeleted: false,
-      status: { $nin: ['paid', 'waived', 'cancelled'] },
-      dueDate: { $lt: new Date() },
-    });
-
     const summary = stats[0] || { totalFees: 0, totalPaid: 0, totalPending: 0, count: 0, paidCount: 0, pendingCount: 0, partialCount: 0 };
     const collectionRate = summary.totalFees > 0
       ? parseFloat(((summary.totalPaid / summary.totalFees) * 100).toFixed(1))
@@ -166,7 +156,7 @@ const getFeeAnalytics = async (req, res, next) => {
     return ApiResponse.success(res, 'Analytics retrieved', {
       summary,
       collectionRate,
-      overdueCount,
+      overdueCount: 0,
       feeTypeBreakdown,
       monthlyTrend,
     });
