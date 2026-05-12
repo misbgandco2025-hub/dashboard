@@ -152,10 +152,17 @@ const getDrillConfig = (drillKey) => {
 };
 
 // ── Drill-Down Slide-Over ─────────────────────────────────────────────────────
+const QUERY_STATUS_COLOR = {
+  open:          'bg-red-100 text-red-700',
+  'in-progress': 'bg-amber-100 text-amber-700',
+  closed:        'bg-gray-100 text-gray-500',
+};
+
 const DrillDownDrawer = ({ drillKey, onClose, navigate }) => {
   const cfg = getDrillConfig(drillKey);
   if (!cfg) return null;
   const { isBL, drillType, mode, title, subtitle, gradFrom, gradTo, isClients, params } = cfg;
+  const isOpenQueries = drillType === 'open-queries';
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { data, isLoading } = useQuery({
@@ -173,16 +180,24 @@ const DrillDownDrawer = ({ drillKey, onClose, navigate }) => {
     enabled: !!drillKey,
   });
 
-  const openItem = (item) => {
+  const openItem = (item, initialTab) => {
     onClose();
     if (isClients) {
       navigate('/clients', { state: { openClient: item } });
     } else {
-      navigate(isBL ? '/bank-loans' : '/subsidies', { state: { openApp: item } });
+      navigate(isBL ? '/bank-loans' : '/subsidies', {
+        state: { openApp: item, ...(initialTab ? { initialTab } : {}) },
+      });
     }
   };
 
   const viewAllPath = isClients ? '/clients' : (isBL ? '/bank-loans' : '/subsidies');
+
+  // For open-queries: count open queries across all apps
+  const totalOpenQueries = isOpenQueries
+    ? (data ?? []).reduce((sum, app) =>
+        sum + (app.queries ?? []).filter(q => q.status === 'open' || q.status === 'in-progress').length, 0)
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -207,7 +222,9 @@ const DrillDownDrawer = ({ drillKey, onClose, navigate }) => {
         {!isLoading && (
           <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
             <span className="text-xs font-semibold text-gray-500">
-              {data?.length ?? 0} {isClients ? 'clients' : 'applications'} found
+              {isOpenQueries
+                ? `${totalOpenQueries} open quer${totalOpenQueries === 1 ? 'y' : 'ies'} across ${data?.length ?? 0} applications`
+                : `${data?.length ?? 0} ${isClients ? 'clients' : 'applications'} found`}
             </span>
           </div>
         )}
@@ -241,6 +258,54 @@ const DrillDownDrawer = ({ drillKey, onClose, navigate }) => {
                 </div>
               </button>
             ))
+          ) : isOpenQueries ? (
+            // ── Open Queries view: expand each app to show its queries ──
+            data.map((app) => {
+              const openQs = (app.queries ?? []).filter(q => q.status === 'open' || q.status === 'in-progress');
+              if (!openQs.length) return null;
+              return (
+                <div key={app._id} className="border border-red-100 rounded-xl overflow-hidden bg-white">
+                  {/* App header */}
+                  <div className="px-4 py-3 bg-red-50 flex items-center justify-between border-b border-red-100">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{app.clientId?.name ?? '—'}</p>
+                      <p className="text-xs text-gray-500 font-mono">{app.applicationId}</p>
+                    </div>
+                    <span className="shrink-0 ml-2 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">
+                      {openQs.length} quer{openQs.length === 1 ? 'y' : 'ies'}
+                    </span>
+                  </div>
+                  {/* Query list */}
+                  <div className="divide-y divide-gray-50">
+                    {openQs.map((q) => (
+                      <button key={q._id} onClick={() => openItem(app, 'queries')}
+                        className="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors group flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-[10px] font-mono text-gray-400">{q.queryNumber}</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${QUERY_STATUS_COLOR[q.status] ?? 'bg-gray-100 text-gray-500'}`}>
+                              {q.status}
+                            </span>
+                            {q.priority && (
+                              <span className="text-[10px] text-gray-400 capitalize">{q.priority}</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-700 line-clamp-2 leading-snug">
+                            {q.description || q.queryDescription || '—'}
+                          </p>
+                          {q.queryRaisedDate && (
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              Raised: {new Date(q.queryRaisedDate).toLocaleDateString('en-IN')}
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-red-500 shrink-0 mt-0.5 transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
           ) : (
             data.map((app) => (
               <button key={app._id} onClick={() => openItem(app)}
