@@ -35,12 +35,18 @@ const createUser = async (req, res, next) => {
   try {
     const { username, email, password, fullName, role, mobile } = req.body;
 
-    const existing = await User.findOne({ $or: [{ username }, { email }] });
-    if (existing) {
-      return next(ApiError.conflict('Username or email already exists.'));
+    const existingUser = await User.findOne({ username });
+    if (existingUser) return next(ApiError.conflict('Username already exists.'));
+
+    let emailToSave = email;
+    if (email) {
+      const existingEmail = await User.findOne({ email });
+      if (existingEmail) return next(ApiError.conflict('Email already exists.'));
+    } else {
+      emailToSave = undefined; // prevent empty string unique constraint violation
     }
 
-    const user = await User.create({ username, email, password, fullName, role, mobile });
+    const user = await User.create({ username, email: emailToSave, password, fullName, role, mobile });
     const userObj = user.toObject();
     delete userObj.password;
 
@@ -61,12 +67,23 @@ const getUserById = async (req, res, next) => {
   }
 };
 
-// PUT /api/users/:id
 const updateUser = async (req, res, next) => {
   try {
     const allowed = ['fullName', 'email', 'mobile', 'status'];
-    const updates = {};
-    allowed.forEach((f) => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
+    const updates = { $set: {}, $unset: {} };
+    
+    allowed.forEach((f) => { 
+      if (req.body[f] !== undefined) {
+        if (f === 'email' && req.body[f] === '') {
+          updates.$unset[f] = 1;
+        } else {
+          updates.$set[f] = req.body[f]; 
+        }
+      } 
+    });
+
+    if (Object.keys(updates.$set).length === 0) delete updates.$set;
+    if (Object.keys(updates.$unset).length === 0) delete updates.$unset;
 
     const user = await User.findByIdAndUpdate(req.params.id, updates, {
       new: true,
