@@ -13,6 +13,7 @@ import {
   updateSubsidyNhbDetails, updateSubsidyGocDetails,
   updateSubsidyPayment, updateSubsidyVerification,
   updateSubsidyBankSanction, updateSubsidyClaim,
+  updateSubsidy,
 } from '../services/subsidyService';
 import { getClients } from '../services/clientService';
 import useAuth from '../hooks/useAuth';
@@ -815,6 +816,114 @@ const PaymentPanel = ({ applicationId, paymentDetails, subsidyClaim, qc, can }) 
   );
 };
 
+// ─── Info Panel ───────────────────────────────────────────────────────────────
+
+const SubsidyInfoPanel = ({ applicationId, app, qc, can }) => {
+  const [form, setForm] = useState({
+    schemeName: '',
+    schemeType: 'none',
+    departmentName: '',
+    subsidyAmountApplied: '',
+    projectCost: '',
+    subsidyPercentage: '',
+    approvedAmount: '',
+    releaseDate: '',
+  });
+
+  useEffect(() => {
+    setForm({
+      schemeName: app.schemeName || '',
+      schemeType: app.schemeType || 'none',
+      departmentName: app.departmentName || '',
+      subsidyAmountApplied: app.subsidyAmountApplied || '',
+      projectCost: app.projectCost || '',
+      subsidyPercentage: app.subsidyPercentage || '',
+      approvedAmount: app.approvedAmount || '',
+      releaseDate: app.releaseDate ? new Date(app.releaseDate).toISOString().slice(0, 10) : '',
+    });
+  }, [app]);
+
+  const mutation = useMutation({
+    mutationFn: (data) => updateSubsidy(applicationId, data),
+    onSuccess: () => { invalidateBoth(qc, applicationId); toast.success('Application info updated'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update'),
+  });
+
+  const canEdit = can('subsidies.update');
+
+  return (
+    <EditablePanel
+      title="Application Details"
+      subtitle="Core information and applied amounts"
+      canEdit={canEdit}
+      saving={mutation.isPending}
+      onSave={(close) => {
+        const payload = {
+          ...form,
+          releaseDate: form.releaseDate || undefined,
+        };
+        mutation.mutate(payload, { onSuccess: close });
+      }}
+      viewContent={
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+          <InfoRow label="Application ID"     value={app.applicationId} />
+          <InfoRow label="Scheme Name"        value={app.schemeName} />
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-gray-400 font-medium">Scheme Type</span>
+            <SchemeBadge value={app.schemeType} />
+          </div>
+          <InfoRow label="File Receive Date"  value={formatDate(app.applicationDate)} />
+          <InfoRow label="Department"         value={app.departmentName} />
+          <InfoRow label="Subsidy Applied"    value={app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—'} />
+          <InfoRow label="Project Cost"       value={app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—'} />
+          <InfoRow label="Subsidy %"          value={app.subsidyPercentage ? `${app.subsidyPercentage}%` : '—'} />
+          <InfoRow label="Approved Amount"    value={app.approvedAmount ? `₹${Number(app.approvedAmount).toLocaleString('en-IN')}` : '—'} />
+          <InfoRow label="Release Date"       value={formatDate(app.releaseDate)} />
+        </div>
+      }
+    >
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label className="label-base">Scheme Name</label>
+          <input className="input-base" value={form.schemeName} onChange={e => setForm(f => ({ ...f, schemeName: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Scheme Type</label>
+          <select className="input-base" value={form.schemeType} onChange={e => setForm(f => ({ ...f, schemeType: e.target.value }))}>
+            <option value="none">—</option>
+            <option value="nhb">NHB</option>
+            <option value="general">General</option>
+          </select>
+        </div>
+        <div>
+          <label className="label-base">Department</label>
+          <input className="input-base" value={form.departmentName} onChange={e => setForm(f => ({ ...f, departmentName: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Subsidy Applied (₹)</label>
+          <input type="number" className="input-base" value={form.subsidyAmountApplied} onChange={e => setForm(f => ({ ...f, subsidyAmountApplied: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Project Cost (₹)</label>
+          <input type="number" className="input-base" value={form.projectCost} onChange={e => setForm(f => ({ ...f, projectCost: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Subsidy %</label>
+          <input type="number" className="input-base" value={form.subsidyPercentage} onChange={e => setForm(f => ({ ...f, subsidyPercentage: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Approved Amount (₹)</label>
+          <input type="number" className="input-base" value={form.approvedAmount} onChange={e => setForm(f => ({ ...f, approvedAmount: e.target.value }))} />
+        </div>
+        <div>
+          <label className="label-base">Release Date</label>
+          <input type="date" className="input-base" value={form.releaseDate} onChange={e => setForm(f => ({ ...f, releaseDate: e.target.value }))} />
+        </div>
+      </div>
+    </EditablePanel>
+  );
+};
+
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 
 const SCHEME_TABS = [
@@ -1335,24 +1444,7 @@ const Subsidies = () => {
                   <InfoRow label="Branch"         value={app.clientId?.branchName} />
                 </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Application Details</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                  <InfoRow label="Application ID"     value={app.applicationId} />
-                  <InfoRow label="Scheme Name"         value={app.schemeName} />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-gray-400 font-medium">Scheme Type</span>
-                    <SchemeBadge value={app.schemeType} />
-                  </div>
-                  <InfoRow label="File Receive Date"  value={formatDate(app.applicationDate)} />
-                  <InfoRow label="Department"          value={app.departmentName} />
-                  <InfoRow label="Subsidy Applied"     value={app.subsidyAmountApplied ? `₹${Number(app.subsidyAmountApplied).toLocaleString('en-IN')}` : '—'} />
-                  <InfoRow label="Project Cost"        value={app.projectCost ? `₹${Number(app.projectCost).toLocaleString('en-IN')}` : '—'} />
-                  <InfoRow label="Subsidy %"           value={app.subsidyPercentage ? `${app.subsidyPercentage}%` : '—'} />
-                  <InfoRow label="Approved Amount"     value={app.approvedAmount ? `₹${Number(app.approvedAmount).toLocaleString('en-IN')}` : '—'} />
-                  <InfoRow label="Release Date"        value={formatDate(app.releaseDate)} />
-                </div>
-              </div>
+              <SubsidyInfoPanel applicationId={app._id ?? detailApp._id} app={app} qc={qc} can={can} />
             </div>
           )}
 
