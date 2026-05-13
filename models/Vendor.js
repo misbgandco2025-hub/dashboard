@@ -27,13 +27,19 @@ const vendorSchema = new mongoose.Schema(
     mobile: {
       type: String,
       trim: true,
-      match: [/^\d{10}$/, 'Mobile must be 10 digits'],
+      validate: {
+        validator: function (v) { return !v || /^\d{10}$/.test(v); },
+        message: 'Mobile must be 10 digits',
+      },
     },
     email: {
       type: String,
       trim: true,
       lowercase: true,
-      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
+      validate: {
+        validator: function (v) { return !v || /^\S+@\S+\.\S+$/.test(v); },
+        message: 'Please provide a valid email',
+      },
     },
     address: {
       type: String,

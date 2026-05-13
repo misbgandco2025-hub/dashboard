@@ -35,7 +35,14 @@ const VendorForm = ({ vendor, onSuccess, onClose }) => {
   });
 
   const mutation = useMutation({
-    mutationFn: (data) => isEdit ? updateVendor(vendor._id, data) : createVendor(data),
+    mutationFn: (data) => {
+      // Strip empty optional strings so backend regex validators are not triggered
+      const clean = { ...data };
+      ['contactPerson', 'mobile', 'email', 'address', 'commissionDetails', 'agreementDate', 'vendorCode'].forEach((key) => {
+        if (clean[key] === '' || clean[key] === null) clean[key] = undefined;
+      });
+      return isEdit ? updateVendor(vendor._id, clean) : createVendor(clean);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['vendors'] });
       toast.success(`Vendor ${isEdit ? 'updated' : 'created'} successfully`);
