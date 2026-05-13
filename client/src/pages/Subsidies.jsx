@@ -206,18 +206,18 @@ const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
-          <label className="label-base">Portal Email / User ID <span className="text-danger-500">*</span></label>
+          <label className="label-base">Portal Email / User ID</label>
           <input type="text" className="input-base font-mono" placeholder="gov.portal@example.com or user ID"
             value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
         </div>
         <div>
-          <label className="label-base">Mobile Number (for OTP) <span className="text-danger-500">*</span></label>
+          <label className="label-base">Mobile Number (for OTP)</label>
           <input type="tel" className="input-base" placeholder="10-digit mobile number"
             value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
         </div>
         <div>
           <label className="label-base">
-            Password <span className="text-danger-500">*</span>{' '}
+            Password{' '}
             {credentials?._passwordEncrypted && <span className="text-gray-400 font-normal text-xs">(leave blank to keep current)</span>}
           </label>
           <div className="relative">
@@ -1624,7 +1624,7 @@ const Subsidies = () => {
               {createErrors.schemeName && <p className="mt-1 text-xs text-danger-600">{createErrors.schemeName.message}</p>}
             </div>
             <div>
-              <label className="label-base">Scheme Type<span className="text-danger-500 ml-0.5">*</span></label>
+              <label className="label-base">Scheme Type</label>
               <select className="input-base" {...regCreate('schemeType')}>
                 <option value="none">None</option>
                 <option value="nhb">NHB</option>

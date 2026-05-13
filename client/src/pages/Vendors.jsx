@@ -56,7 +56,7 @@ const VendorForm = ({ vendor, onSuccess, onClose }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input label="Vendor Name" required error={errors.vendorName?.message} {...register('vendorName', { required: 'Required' })} />
         <Input label="Vendor Code" placeholder="Auto-generated if empty" {...register('vendorCode')} />
-        <Input label="Contact Person" required error={errors.contactPerson?.message} {...register('contactPerson', { required: 'Required' })} />
+        <Input label="Contact Person" error={errors.contactPerson?.message} {...register('contactPerson')} />
         <Input label="Mobile" type="tel" error={errors.mobile?.message} {...register('mobile', { pattern: { value: /^\d{10}$/, message: '10 digits required' } })} />
         <Input label="Email" type="email" {...register('email')} />
         <Input label="Agreement Date" type="date" {...register('agreementDate')} />

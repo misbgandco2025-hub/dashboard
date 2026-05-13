@@ -52,8 +52,8 @@ const QuickAddVendor = ({ onCreated, onCancel }) => {
             {...register('vendorName', { required: 'Required' })} />
           <Input label="Vendor Code" placeholder="Auto-generated if empty"
             {...register('vendorCode')} />
-          <Input label="Contact Person" required error={errors.contactPerson?.message}
-            {...register('contactPerson', { required: 'Required' })} />
+          <Input label="Contact Person" error={errors.contactPerson?.message}
+            {...register('contactPerson')} />
           <Input label="Mobile" type="tel" error={errors.mobile?.message}
             {...register('mobile', { pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
           <Input label="Email" type="email" {...register('email')} />
@@ -148,10 +148,10 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
           <Input label="Email" type="email" required error={errors.email?.message} {...register('email', { required: 'Required' })} />
           <Input label="Mobile" type="tel" required error={errors.mobile?.message} {...register('mobile', { required: 'Required', pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
           <Input label="Alternate Mobile" type="tel" error={errors.alternateMobile?.message} {...register('alternateMobile', { pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
-          <Input label="Business / Project Name" required error={errors.businessName?.message} {...register('businessName', { required: 'Required' })} />
+          <Input label="Business / Project Name" error={errors.businessName?.message} {...register('businessName')} />
           <div className="sm:col-span-2">
-            <label className="label-base">Address<span className="text-danger-500 ml-0.5">*</span></label>
-            <textarea className={`input-base resize-none ${errors.address ? 'input-error' : ''}`} rows={2} {...register('address', { required: 'Required' })} />
+            <label className="label-base">Address</label>
+            <textarea className={`input-base resize-none ${errors.address ? 'input-error' : ''}`} rows={2} {...register('address')} />
             {errors.address && <p className="mt-1 text-xs text-danger-600">{errors.address.message}</p>}
           </div>
         </div>
@@ -162,13 +162,13 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
         <h4 className="form-section-title">Bank Information</h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="label-base">Bank Name<span className="text-danger-500 ml-0.5">*</span></label>
-            <select className="input-base" {...register('bankName', { required: 'Required' })}>
+            <label className="label-base">Bank Name</label>
+            <select className="input-base" {...register('bankName')}>
               <option value="">Select bank...</option>
               {COMMON_BANKS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
-          <Input label="Branch Name" required error={errors.branchName?.message} {...register('branchName', { required: 'Required' })} />
+          <Input label="Branch Name" error={errors.branchName?.message} {...register('branchName')} />
           <Input label="IFSC Code" placeholder="SBIN0001234" error={errors.ifscCode?.message} {...register('ifscCode', { pattern: { value: /^[A-Z]{4}0[A-Z0-9]{6}$/, message: 'Invalid IFSC' } })} />
         </div>
       </div>
@@ -177,7 +177,7 @@ const ClientForm = ({ client, onSuccess, onClose }) => {
       <div>
         <h4 className="form-section-title">Bank Contact Person</h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="Contact Person Name" required error={errors.bankContactPerson?.message} {...register('bankContactPerson', { required: 'Required' })} />
+          <Input label="Contact Person Name" error={errors.bankContactPerson?.message} {...register('bankContactPerson')} />
           <Input label="Designation" {...register('bankContactDesignation')} />
           <Input label="Mobile" type="tel" error={errors.bankContactMobile?.message} {...register('bankContactMobile', { pattern: { value: /^\d{10}$/, message: '10 digits' } })} />
           <Input label="Email" type="email" {...register('bankContactEmail')} />
