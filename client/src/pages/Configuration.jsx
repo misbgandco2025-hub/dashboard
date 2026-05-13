@@ -20,12 +20,18 @@ const DocTypeForm = ({ doc, type, onSuccess, onClose }) => {
 
   const { register, handleSubmit } = useForm({
     defaultValues: doc
-      ? { name: doc.name, description: doc.description, required: doc.isRequired, displayOrder: doc.displayOrder, subCategory: doc.subCategory || '' }
+      ? { name: doc.name, description: doc.description, required: doc.required, displayOrder: doc.displayOrder, subCategory: doc.subCategory || '' }
       : { required: false, displayOrder: 99, subCategory: '' },
   });
 
   const mutation = useMutation({
-    mutationFn: (data) => isEdit ? updateDocumentType(doc._id, { ...data, type }) : createDocumentType({ ...data, type }),
+    mutationFn: (data) => {
+      const payload = { ...data, type };
+      if (!payload.subCategory) {
+        delete payload.subCategory;
+      }
+      return isEdit ? updateDocumentType(doc._id, payload) : createDocumentType(payload);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['config-docs', type] });
       configStore.invalidate();
@@ -167,7 +173,7 @@ const Configuration = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-gray-800">{doc.name}</p>
-                      <Badge color={doc.isRequired ? 'red' : 'gray'} size="sm">{doc.isRequired ? 'Required' : 'Optional'}</Badge>
+                      <Badge color={doc.required ? 'red' : 'gray'} size="sm">{doc.required ? 'Required' : 'Optional'}</Badge>
                       <Badge color={doc.isActive ? 'green' : 'gray'} size="sm">{doc.isActive ? 'Active' : 'Inactive'}</Badge>
                       {doc.subCategory && (
                         <Badge color={doc.subCategory === 'goc' ? 'blue' : 'purple'} size="sm">

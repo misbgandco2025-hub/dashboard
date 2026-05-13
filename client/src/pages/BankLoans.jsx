@@ -156,7 +156,7 @@ const DocumentChecklist = ({ applicationId, checklist }) => {
                     ? <span className="text-green-500 text-base">✔</span>
                     : <span className="text-red-400 text-base">○</span>}
                   {doc.documentName}
-                  {doc.isRequired && <span className="text-[10px] text-danger-500 font-semibold bg-danger-50 px-1.5 py-0.5 rounded">Required</span>}
+                  {doc.documentType?.required && <span className="text-[10px] text-danger-500 font-semibold bg-danger-50 px-1.5 py-0.5 rounded">Required</span>}
                 </p>
                 {doc.remarks && <p className="text-xs text-gray-400 mt-0.5 ml-6">{doc.remarks}</p>}
               </div>
