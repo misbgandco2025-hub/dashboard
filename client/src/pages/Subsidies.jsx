@@ -169,14 +169,14 @@ const invalidateBoth = (qc, applicationId) => {
 
 // ─── GOC Portal Panel ──────────────────────────────────────────────────────────────────────
 const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
-  const [form, setForm] = useState({ portalId: '', password: '', email: '', mobile: '' });
+  const [form, setForm] = useState({ userId: '', password: '', email: '', mobile: '' });
   const [showPass, setShowPass] = useState(false);
 
   useEffect(() => {
     setForm({
-      portalId: credentials?.email ?? '',   // email field repurposed as portal ID
+      userId:   credentials?.userId ?? '',
       password: '',
-      email:    credentials?.email ?? '',   // kept for legacy
+      email:    credentials?.email ?? '',
       mobile:   credentials?.mobile ?? '',
     });
   }, [credentials]);
@@ -195,23 +195,24 @@ const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
       subtitle="Login details for the GOC government portal"
       canEdit={canEdit}
       saving={mutation.isPending}
-      onSave={(close) => mutation.mutate({ email: form.email, mobile: form.mobile, password: form.password || undefined }, { onSuccess: close })}
+      onSave={(close) => mutation.mutate({ userId: form.userId, email: form.email, mobile: form.mobile, password: form.password || undefined }, { onSuccess: close })}
       viewContent={
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <InfoRow label="Portal Email / User ID" value={credentials?.email} mono />
-          <InfoRow label="Mobile (OTP)"           value={credentials?.mobile} />
+          <InfoRow label="ID"                     value={credentials?.userId} mono />
+          <InfoRow label="Mobile No"              value={credentials?.mobile} />
           <InfoRow label="Password"               value={credentials?._passwordEncrypted ? '••••••••' : null} />
+          <InfoRow label="Email (optional)"       value={credentials?.email} mono />
         </div>
       }
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="sm:col-span-2">
-          <label className="label-base">Portal Email / User ID</label>
-          <input type="text" className="input-base font-mono" placeholder="gov.portal@example.com or user ID"
-            value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+        <div>
+          <label className="label-base">ID</label>
+          <input type="text" className="input-base font-mono" placeholder="User ID"
+            value={form.userId} onChange={e => setForm(f => ({ ...f, userId: e.target.value }))} />
         </div>
         <div>
-          <label className="label-base">Mobile Number (for OTP)</label>
+          <label className="label-base">Mobile No</label>
           <input type="tel" className="input-base" placeholder="10-digit mobile number"
             value={form.mobile} onChange={e => setForm(f => ({ ...f, mobile: e.target.value }))} />
         </div>
@@ -227,6 +228,11 @@ const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
             <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary-600 font-medium"
               onClick={() => setShowPass(v => !v)}>{showPass ? 'Hide' : 'Show'}</button>
           </div>
+        </div>
+        <div>
+          <label className="label-base">Email (optional)</label>
+          <input type="email" className="input-base font-mono" placeholder="gov.portal@example.com"
+            value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
         </div>
       </div>
     </EditablePanel>

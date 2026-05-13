@@ -265,6 +265,7 @@ const subsidyApplicationSchema = new mongoose.Schema(
 
     // ── Existing GOC portal credentials (email/mobile/password) ──────────────
     gocCredentials: {
+      userId:             { type: String, trim: true },
       email:              { type: String, trim: true },
       mobile:             { type: String, trim: true },
       _passwordEncrypted: { type: String },

@@ -624,11 +624,12 @@ const assignApplication = async (req, res, next) => {
 // ── PUT /api/subsidies/:id/goc-credentials ───────────────────────────────────
 const updateGocCredentials = async (req, res, next) => {
   try {
-    const { email, mobile, password } = req.body;
+    const { userId, email, mobile, password } = req.body;
     const app = await SubsidyApplication.findOne({ _id: req.params.id, isDeleted: false });
     if (!app) return next(ApiError.notFound('Application not found.'));
 
     if (!app.gocCredentials) app.gocCredentials = {};
+    if (userId !== undefined) app.gocCredentials.userId = userId;
     if (email !== undefined) app.gocCredentials.email = email;
     if (mobile !== undefined) app.gocCredentials.mobile = mobile;
     if (password) app.gocCredentials._passwordEncrypted = encryptText(password);
@@ -636,6 +637,7 @@ const updateGocCredentials = async (req, res, next) => {
     app.markModified('gocCredentials');
     await app.save();
     return ApiResponse.success(res, 'GOC credentials saved', {
+      userId: app.gocCredentials.userId,
       email: app.gocCredentials.email,
       mobile: app.gocCredentials.mobile,
       hasPassword: !!app.gocCredentials._passwordEncrypted,
