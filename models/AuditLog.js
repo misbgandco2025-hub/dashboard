@@ -28,6 +28,7 @@ const auditLogSchema = new mongoose.Schema(
     },
     ipAddress: { type: String, trim: true },
     userAgent: { type: String, trim: true },
+    requestId: { type: String, trim: true },
   },
   { timestamps: true }
 );
@@ -40,5 +41,7 @@ auditLogSchema.pre('save', async function (next) {
 });
 
 auditLogSchema.index({ userId: 1, entity: 1, action: 1, createdAt: -1 });
+// Auto-expire audit logs after 2 years (63,072,000 seconds)
+auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 63072000 });
 
 module.exports = mongoose.model('AuditLog', auditLogSchema);

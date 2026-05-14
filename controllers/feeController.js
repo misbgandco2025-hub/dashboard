@@ -3,7 +3,7 @@ const Client = require('../models/Client');
 const SubsidyApplication = require('../models/SubsidyApplication');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { getPaginationOptions, buildPaginationMeta } = require('../utils/helpers');
+const { getPaginationOptions, buildPaginationMeta, escapeRegex } = require('../utils/helpers');
 
 // ─── POST /api/fees ────────────────────────────────────────────────────────────
 const createFee = async (req, res, next) => {
@@ -61,10 +61,11 @@ const getAllFees = async (req, res, next) => {
 
 
     if (search) {
+      const s = escapeRegex(String(search));
       filter.$or = [
-        { feeId: { $regex: search, $options: 'i' } },
-        { invoiceNumber: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+        { feeId: { $regex: s, $options: 'i' } },
+        { invoiceNumber: { $regex: s, $options: 'i' } },
+        { description: { $regex: s, $options: 'i' } },
       ];
     }
 

@@ -48,6 +48,8 @@ const userSchema = new mongoose.Schema(
     lastLogin: { type: Date },
     totalLogins: { type: Number, default: 0 },
     refreshToken: { type: String, select: false },
+    loginAttempts: { type: Number, default: 0, select: false },
+    lockUntil: { type: Date, select: false },
     applicationsCreated: { type: Number, default: 0 },
     applicationsUpdated: { type: Number, default: 0 },
   },
@@ -64,6 +66,29 @@ userSchema.pre('save', async function (next) {
 // Compare password
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
+};
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+userSchema.virtual('isLocked').get(function () {
+  return this.lockUntil && this.lockUntil > Date.now();
+});
+
+userSchema.methods.incrementLoginAttempts = async function () {
+  // If a previous lock has expired, reset
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    return this.updateOne({ $set: { loginAttempts: 1 }, $unset: { lockUntil: 1 } });
+  }
+  const update = { $inc: { loginAttempts: 1 } };
+  if (this.loginAttempts + 1 >= MAX_LOGIN_ATTEMPTS && !this.isLocked) {
+    update.$set = { lockUntil: new Date(Date.now() + LOCK_DURATION_MS) };
+  }
+  return this.updateOne(update);
+};
+
+userSchema.methods.resetLoginAttempts = function () {
+  return this.updateOne({ $set: { loginAttempts: 0 }, $unset: { lockUntil: 1 } });
 };
 
 module.exports = mongoose.model('User', userSchema);

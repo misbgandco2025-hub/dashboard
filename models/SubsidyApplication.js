@@ -300,14 +300,20 @@ subsidyApplicationSchema.virtual('documentCompletionPercentage').get(function ()
   return Math.round((done / this.documentChecklist.length) * 100);
 });
 
+// Single-field indexes
 subsidyApplicationSchema.index({ clientId: 1, isDeleted: 1 });
-subsidyApplicationSchema.index({ assignedTo: 1, currentStatus: 1 });
 subsidyApplicationSchema.index({ applicationDate: -1 });
 subsidyApplicationSchema.index({ schemeType: 1 });
 subsidyApplicationSchema.index({ 'nhbDetails.nhbPortalStatus': 1 });
-subsidyApplicationSchema.index({ gocBankVerificationStatus: 1, geoTaggingStatus: 1 });
 subsidyApplicationSchema.index({ 'paymentDetails.paymentReceived': 1 });
 subsidyApplicationSchema.index({ 'bankLoanSanction.sanctionStatus': 1 });
 subsidyApplicationSchema.index({ 'subsidyClaim.claimStatus': 1 });
+
+// Compound indexes — mirror the most common filter combinations in getApplications
+subsidyApplicationSchema.index({ isDeleted: 1, currentStatus: 1, createdAt: -1 });
+subsidyApplicationSchema.index({ isDeleted: 1, assignedTo: 1, currentStatus: 1 });
+subsidyApplicationSchema.index({ isDeleted: 1, priority: 1, createdAt: -1 });
+subsidyApplicationSchema.index({ isDeleted: 1, clientId: 1, createdAt: -1 });
+subsidyApplicationSchema.index({ isDeleted: 1, gocBankVerificationStatus: 1, geoTaggingStatus: 1 });
 
 module.exports = mongoose.model('SubsidyApplication', subsidyApplicationSchema);

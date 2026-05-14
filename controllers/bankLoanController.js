@@ -2,7 +2,7 @@ const BankLoanApplication = require('../models/BankLoanApplication');
 const Client = require('../models/Client');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { getPaginationOptions, buildPaginationMeta, generateQueryNumber } = require('../utils/helpers');
+const { getPaginationOptions, buildPaginationMeta, generateQueryNumber, escapeRegex } = require('../utils/helpers');
 const { notifyAssignment, notifyStatusChange, notifyQueryRaised, notifyDocumentUpdate } = require('../utils/notificationHelper');
 
 const populateOptions = [
@@ -21,10 +21,11 @@ const getApplications = async (req, res, next) => {
     const filter = { isDeleted: false };
 
     if (req.query.search) {
+      const s = escapeRegex(String(req.query.search));
       filter.$or = [
-        { applicationId: { $regex: req.query.search, $options: 'i' } },
-        { bankRefNumber: { $regex: req.query.search, $options: 'i' } },
-        { loanScheme: { $regex: req.query.search, $options: 'i' } },
+        { applicationId: { $regex: s, $options: 'i' } },
+        { bankRefNumber: { $regex: s, $options: 'i' } },
+        { loanScheme: { $regex: s, $options: 'i' } },
       ];
     }
     if (req.query.currentStatus) filter.currentStatus = req.query.currentStatus;

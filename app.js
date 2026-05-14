@@ -5,10 +5,11 @@ const morgan = require('morgan');
 const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss');
 
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const rateLimiter = require('./middleware/rateLimiter');
+const requestId = require('./middleware/requestId');
+const sanitize = require('./middleware/sanitize');
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');
@@ -25,6 +26,12 @@ const auditLogRoutes = require('./routes/auditLogRoutes');
 const feeRoutes = require('./routes/feeRoutes');
 
 const app = express();
+
+// Trust the first proxy hop (required for correct IP via req.ip on Vercel / nginx)
+app.set('trust proxy', 1);
+
+// Request ID — attach before any logging so the ID is available everywhere
+app.use(requestId);
 
 // Security Middleware
 app.use(helmet());
@@ -44,7 +51,8 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Requested-With'],
+  exposedHeaders: ['X-Request-ID'],
 };
 app.use(cors(corsOptions));
 
@@ -53,16 +61,24 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
+// XSS sanitisation — runs after body is parsed
+app.use(sanitize);
+
 // Compression
 app.use(compression());
 
-// Logging
+// Logging — include request ID in every log line
 if (process.env.NODE_ENV !== 'test') {
-  app.use(morgan('dev'));
+  morgan.token('reqid', (req) => req.requestId || '-');
+  const logFormat = process.env.NODE_ENV === 'production'
+    ? ':reqid :remote-addr :method :url :status :res[content-length] - :response-time ms'
+    : ':reqid :method :url :status :response-time ms';
+  app.use(morgan(logFormat));
 }
 
-// Rate limiting (global)
-app.use('/api/', rateLimiter);
+// Rate limiting
+app.use('/api/', rateLimiter);                         // global IP limiter
+app.use('/api/', rateLimiter.userRateLimiter);         // per-user limiter (no-op if unauthenticated)
 
 // Root route
 app.get('/', (req, res) => {

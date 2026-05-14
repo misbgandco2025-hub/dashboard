@@ -2,7 +2,7 @@ const SubsidyApplication = require('../models/SubsidyApplication');
 const Client = require('../models/Client');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { encryptText, getPaginationOptions, buildPaginationMeta, generateQueryNumber } = require('../utils/helpers');
+const { encryptText, getPaginationOptions, buildPaginationMeta, generateQueryNumber, escapeRegex } = require('../utils/helpers');
 const { notifyAssignment, notifyStatusChange, notifyQueryRaised, notifyDocumentUpdate } = require('../utils/notificationHelper');
 
 // ── Deep-populate: Client → Vendor ───────────────────────────────────────────
@@ -60,10 +60,11 @@ const getApplications = async (req, res, next) => {
 
     // Text search
     if (req.query.search) {
+      const s = escapeRegex(String(req.query.search));
       filter.$or = [
-        { applicationId: { $regex: req.query.search, $options: 'i' } },
-        { schemeName: { $regex: req.query.search, $options: 'i' } },
-        { departmentName: { $regex: req.query.search, $options: 'i' } },
+        { applicationId: { $regex: s, $options: 'i' } },
+        { schemeName: { $regex: s, $options: 'i' } },
+        { departmentName: { $regex: s, $options: 'i' } },
       ];
     }
 

@@ -24,15 +24,32 @@ const login = async (req, res, next) => {
     const user = await User.findOne({
       $or: [{ username: username.toLowerCase() }, { email: username.toLowerCase() }],
       isDeleted: { $ne: true },
-    }).select('+password +refreshToken');
+    }).select('+password +refreshToken +loginAttempts +lockUntil');
 
-    if (!user || !(await user.comparePassword(password))) {
+    if (!user) {
       return next(ApiError.unauthorized('Invalid credentials.'));
+    }
+
+    if (user.isLocked) {
+      const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / 60000);
+      return next(ApiError.forbidden(`Account temporarily locked. Try again in ${minutesLeft} minute(s).`));
     }
 
     if (user.status === 'inactive') {
       return next(ApiError.forbidden('Your account is deactivated. Contact an administrator.'));
     }
+
+    const passwordMatch = await user.comparePassword(password);
+    if (!passwordMatch) {
+      await user.incrementLoginAttempts();
+      const attemptsLeft = Math.max(0, 5 - (user.loginAttempts + 1));
+      const msg = attemptsLeft > 0
+        ? `Invalid credentials. ${attemptsLeft} attempt(s) remaining before lockout.`
+        : 'Invalid credentials. Account is now locked for 15 minutes.';
+      return next(ApiError.unauthorized(msg));
+    }
+
+    await user.resetLoginAttempts();
 
     const { accessToken, refreshToken } = generateTokens(user._id);
 

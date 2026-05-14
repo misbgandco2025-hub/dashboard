@@ -3,7 +3,7 @@ const BankLoanApplication = require('../models/BankLoanApplication');
 const SubsidyApplication = require('../models/SubsidyApplication');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { getPaginationOptions, buildPaginationMeta } = require('../utils/helpers');
+const { getPaginationOptions, buildPaginationMeta, escapeRegex } = require('../utils/helpers');
 
 // GET /api/clients
 const getClients = async (req, res, next) => {
@@ -12,11 +12,12 @@ const getClients = async (req, res, next) => {
     const filter = { isDeleted: false };
 
     if (req.query.search) {
+      const s = escapeRegex(String(req.query.search));
       filter.$or = [
-        { name: { $regex: req.query.search, $options: 'i' } },
-        { clientId: { $regex: req.query.search, $options: 'i' } },
-        { mobile: { $regex: req.query.search, $options: 'i' } },
-        { email: { $regex: req.query.search, $options: 'i' } },
+        { name: { $regex: s, $options: 'i' } },
+        { clientId: { $regex: s, $options: 'i' } },
+        { mobile: { $regex: s, $options: 'i' } },
+        { email: { $regex: s, $options: 'i' } },
       ];
     }
     if (req.query.status) filter.status = req.query.status;

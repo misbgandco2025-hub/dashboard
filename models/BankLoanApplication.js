@@ -194,8 +194,14 @@ bankLoanApplicationSchema.virtual('documentCompletionPercentage').get(function (
   return Math.round((done / this.documentChecklist.length) * 100);
 });
 
+// Single-field indexes
 bankLoanApplicationSchema.index({ clientId: 1, isDeleted: 1 });
-bankLoanApplicationSchema.index({ assignedTo: 1, currentStatus: 1 });
 bankLoanApplicationSchema.index({ applicationDate: -1 });
+
+// Compound indexes — mirror the most common filter combinations in getApplications
+bankLoanApplicationSchema.index({ isDeleted: 1, currentStatus: 1, createdAt: -1 });
+bankLoanApplicationSchema.index({ isDeleted: 1, assignedTo: 1, currentStatus: 1 });
+bankLoanApplicationSchema.index({ isDeleted: 1, priority: 1, createdAt: -1 });
+bankLoanApplicationSchema.index({ isDeleted: 1, clientId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('BankLoanApplication', bankLoanApplicationSchema);

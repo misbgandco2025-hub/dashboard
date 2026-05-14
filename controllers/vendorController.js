@@ -4,7 +4,7 @@ const BankLoanApplication = require('../models/BankLoanApplication');
 const SubsidyApplication = require('../models/SubsidyApplication');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { getPaginationOptions, buildPaginationMeta } = require('../utils/helpers');
+const { getPaginationOptions, buildPaginationMeta, escapeRegex } = require('../utils/helpers');
 
 // GET /api/vendors
 const getVendors = async (req, res, next) => {
@@ -13,10 +13,11 @@ const getVendors = async (req, res, next) => {
     const filter = { isDeleted: false };
 
     if (req.query.search) {
+      const s = escapeRegex(String(req.query.search));
       filter.$or = [
-        { vendorName: { $regex: req.query.search, $options: 'i' } },
-        { vendorCode: { $regex: req.query.search, $options: 'i' } },
-        { contactPerson: { $regex: req.query.search, $options: 'i' } },
+        { vendorName: { $regex: s, $options: 'i' } },
+        { vendorCode: { $regex: s, $options: 'i' } },
+        { contactPerson: { $regex: s, $options: 'i' } },
       ];
     }
     if (req.query.status) filter.status = req.query.status;
@@ -90,11 +91,14 @@ const getVendorStatistics = async (req, res, next) => {
     const vendor = await Vendor.findOne({ _id: req.params.id, isDeleted: false });
     if (!vendor) return next(ApiError.notFound('Vendor not found.'));
 
+    // Fetch client ID list once, then run all counts in parallel
+    const clientIds = await Client.find({ vendorId: req.params.id }).distinct('_id');
+
     const [totalClients, activeClients, bankLoans, subsidies] = await Promise.all([
       Client.countDocuments({ vendorId: req.params.id, isDeleted: false }),
       Client.countDocuments({ vendorId: req.params.id, isDeleted: false, status: 'active' }),
-      BankLoanApplication.countDocuments({ isDeleted: false, clientId: { $in: await Client.find({ vendorId: req.params.id }).distinct('_id') } }),
-      SubsidyApplication.countDocuments({ isDeleted: false, clientId: { $in: await Client.find({ vendorId: req.params.id }).distinct('_id') } }),
+      BankLoanApplication.countDocuments({ isDeleted: false, clientId: { $in: clientIds } }),
+      SubsidyApplication.countDocuments({ isDeleted: false, clientId: { $in: clientIds } }),
     ]);
 
     return ApiResponse.success(res, 'Vendor statistics retrieved', {

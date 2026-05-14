@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
-const { getPaginationOptions, buildPaginationMeta } = require('../utils/helpers');
+const { getPaginationOptions, buildPaginationMeta, escapeRegex } = require('../utils/helpers');
 
 // GET /api/users
 const getUsers = async (req, res, next) => {
@@ -10,10 +10,11 @@ const getUsers = async (req, res, next) => {
     const filter = {};
 
     if (req.query.search) {
+      const s = escapeRegex(String(req.query.search));
       filter.$or = [
-        { username: { $regex: req.query.search, $options: 'i' } },
-        { email: { $regex: req.query.search, $options: 'i' } },
-        { fullName: { $regex: req.query.search, $options: 'i' } },
+        { username: { $regex: s, $options: 'i' } },
+        { email: { $regex: s, $options: 'i' } },
+        { fullName: { $regex: s, $options: 'i' } },
       ];
     }
     if (req.query.role) filter.role = req.query.role;

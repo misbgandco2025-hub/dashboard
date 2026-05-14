@@ -2,18 +2,27 @@ const crypto = require('crypto');
 
 const ALGORITHM = 'aes-256-cbc';
 
+const getEncryptionKey = () => {
+  const key = process.env.ENCRYPTION_KEY;
+  if (!key || key.length < 32) {
+    throw new Error('ENCRYPTION_KEY environment variable must be set and at least 32 characters long');
+  }
+  return Buffer.from(key, 'utf8').slice(0, 32);
+};
+
 /**
  * Encrypt a plaintext string using AES-256-CBC
  */
 const encryptText = (text) => {
   try {
-    const key = Buffer.from(process.env.ENCRYPTION_KEY || 'default_32_char_key_padding_12!!', 'utf8').slice(0, 32);
+    const key = getEncryptionKey();
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
     let encrypted = cipher.update(String(text), 'utf8', 'hex');
     encrypted += cipher.final('hex');
     return `${iv.toString('hex')}:${encrypted}`;
   } catch (err) {
+    console.error('Encryption failed:', err.message);
     return text;
   }
 };
@@ -23,8 +32,9 @@ const encryptText = (text) => {
  */
 const decryptText = (encryptedText) => {
   try {
-    const key = Buffer.from(process.env.ENCRYPTION_KEY || 'default_32_char_key_padding_12!!', 'utf8').slice(0, 32);
+    const key = getEncryptionKey();
     const [ivHex, encrypted] = encryptedText.split(':');
+    if (!ivHex || !encrypted) return '';
     const iv = Buffer.from(ivHex, 'hex');
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
@@ -34,6 +44,11 @@ const decryptText = (encryptedText) => {
     return '';
   }
 };
+
+/**
+ * Escape special regex characters to prevent ReDoS attacks
+ */
+const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Generate a query number for a given count
@@ -96,14 +111,16 @@ const buildSearchQuery = (query, searchFields, filterFields) => {
   const filter = { isDeleted: false };
 
   if (query.search && searchFields.length) {
+    const safeSearch = escapeRegex(String(query.search));
     filter.$or = searchFields.map((field) => ({
-      [field]: { $regex: query.search, $options: 'i' },
+      [field]: { $regex: safeSearch, $options: 'i' },
     }));
   }
 
   filterFields.forEach(({ param, field, transform }) => {
-    if (query[param] !== undefined && query[param] !== '') {
-      filter[field || param] = transform ? transform(query[param]) : query[param];
+    const val = query[param];
+    if (val !== undefined && val !== '') {
+      filter[field || param] = transform ? transform(val) : val;
     }
   });
 
@@ -120,6 +137,7 @@ const buildSearchQuery = (query, searchFields, filterFields) => {
 module.exports = {
   encryptText,
   decryptText,
+  escapeRegex,
   generateQueryNumber,
   getPaginationOptions,
   buildPaginationMeta,
