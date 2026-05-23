@@ -200,9 +200,16 @@ const updateApplication = async (req, res, next) => {
     }
 
     if (req.body.gocDetails && req.body.gocDetails.gocStatus &&
-      req.body.gocDetails.gocStatus !== 'not-started' &&
-      app.bankLoanSanction?.sanctionStatus !== 'sanctioned') {
-      return next(ApiError.badRequest('GOC application requires bank loan to be sanctioned first.'));
+      req.body.gocDetails.gocStatus !== 'not-started') {
+      const Client = require('../models/Client');
+      const client = await Client.findById(app.clientId);
+      if (client && (client.clientType === 'both' || client.clientType === 'bank-loan')) {
+        const BankLoanApplication = require('../models/BankLoanApplication');
+        const relatedBankLoan = await BankLoanApplication.findOne({ clientId: app.clientId, isDeleted: false });
+        if (!relatedBankLoan || relatedBankLoan.loanSanction?.sanctionStatus !== 'sanctioned') {
+          return next(ApiError.badRequest('GOC application requires the associated Bank Loan to be sanctioned first.'));
+        }
+      }
     }
 
     if (req.body.subsidyClaim && req.body.subsidyClaim.claimStatus &&
