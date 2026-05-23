@@ -99,6 +99,22 @@ const clientSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+    // Centralized Portal Credentials
+    gocCredentials: {
+      userId: { type: String, trim: true },
+      email: { type: String, trim: true },
+      mobile: { type: String, trim: true },
+      _passwordEncrypted: { type: String },
+    },
+    aifCredentials: {
+      email: { type: String, trim: true },
+      mobile: { type: String, trim: true },
+      _passwordEncrypted: { type: String },
+    },
+    nhbCredentials: {
+      nhbId: { type: String, trim: true },
+      _passwordEncrypted: { type: String },
+    },
   },
   { timestamps: true }
 );

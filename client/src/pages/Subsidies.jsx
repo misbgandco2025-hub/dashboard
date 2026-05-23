@@ -1551,8 +1551,9 @@ const Subsidies = () => {
           {activeTab === 'nhb' && isNhb && (
             <NhbDetailsPanel
               applicationId={app._id ?? detailApp._id}
-              nhbDetails={app.nhbDetails}
-              qc={qc} can={can}
+              nhbDetails={{ ...app.nhbDetails, ...app.clientId?.nhbCredentials }}
+              qc={qc}
+              can={can}
             />
           )}
 
@@ -1560,7 +1561,7 @@ const Subsidies = () => {
           {activeTab === 'goc-portal' && (
             <GocPortalPanel
               applicationId={app._id ?? detailApp._id}
-              credentials={app.gocCredentials}
+              credentials={app.clientId?.gocCredentials}
               qc={qc} can={can}
             />
           )}
@@ -1723,7 +1724,7 @@ const Subsidies = () => {
     { key: 'scheme',        label: 'Scheme',  render: (row) => <SchemeBadge value={row.schemeType} /> },
     { key: 'status',        label: 'Status',  render: (row) => <StatusBadge status={row.currentStatus} /> },
     ...(isNhbActive ? [
-      { key: 'nhbId',       label: 'NHB ID',  render: (row) => <span className="font-mono text-xs">{row.nhbDetails?.nhbId || '—'}</span> },
+      { key: 'nhbId',       label: 'NHB ID',  render: (row) => <span className="font-mono text-xs">{row.clientId?.nhbCredentials?.nhbId || '—'}</span> },
       { key: 'nhbStatus',   label: 'NHB Portal', render: (row) => <NHBStatusBadge value={row.nhbDetails?.nhbPortalStatus} /> },
     ] : []),
     { key: 'sanction',      label: 'Sanction',    render: (row) => <MetaBadge value={row.bankLoanSanction?.sanctionStatus} meta={SANCTION_META} /> },

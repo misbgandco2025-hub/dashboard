@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"/c/Users/Moksh/work/dashboard bhavdip/website/middleware/\")",
+      "Bash(powershell -Command \"Get-Item 'C:\\\\Users\\\\Moksh\\\\work\\\\dashboard bhavdip\\\\website\\\\.claude\\\\worktrees\\\\interesting-panini-3a5d0f' | Select-Object -ExpandProperty LinkType; \\(Get-Item 'C:\\\\Users\\\\Moksh\\\\work\\\\dashboard bhavdip\\\\website\\\\.claude\\\\worktrees\\\\interesting-panini-3a5d0f'\\).Target\")"
+    ]
+  }
+}

@@ -133,11 +133,6 @@ const bankLoanApplicationSchema = new mongoose.Schema(
     portalCredentials: [portalCredentialSchema],
     queries: [querySchema],
     timeline: [timelineSchema],
-    aifCredentials: {
-      email: { type: String, trim: true },
-      mobile: { type: String, trim: true },
-      _passwordEncrypted: { type: String },
-    },
     // ── Loan Preparation ─────────────────────────────────────────────────────
     loanPreparation: {
       preparationStatus: {

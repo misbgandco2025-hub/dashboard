@@ -6,7 +6,7 @@ const { getPaginationOptions, buildPaginationMeta, generateQueryNumber, escapeRe
 const { notifyAssignment, notifyStatusChange, notifyQueryRaised, notifyDocumentUpdate } = require('../utils/notificationHelper');
 
 const populateOptions = [
-  { path: 'clientId', select: 'clientId name email mobile businessName' },
+  { path: 'clientId', select: 'clientId name email mobile businessName gocCredentials nhbCredentials aifCredentials' },
   { path: 'assignedTo', select: 'fullName username' },
   { path: 'createdBy', select: 'fullName username' },
   { path: 'documentChecklist.documentType', select: 'name required' },
@@ -349,20 +349,23 @@ const updateAifCredentials = async (req, res, next) => {
     const app = await BankLoanApplication.findOne({ _id: req.params.id, isDeleted: false });
     if (!app) return next(ApiError.notFound('Application not found.'));
 
-    if (!app.aifCredentials) app.aifCredentials = {};
-    if (email !== undefined) app.aifCredentials.email = email;
-    if (mobile !== undefined) app.aifCredentials.mobile = mobile;
+    const client = await Client.findById(app.clientId);
+    if (!client) return next(ApiError.notFound('Client not found.'));
+
+    if (!client.aifCredentials) client.aifCredentials = {};
+    if (email !== undefined) client.aifCredentials.email = email;
+    if (mobile !== undefined) client.aifCredentials.mobile = mobile;
     if (password) {
       const { encryptText } = require('../utils/helpers');
-      app.aifCredentials._passwordEncrypted = encryptText(password);
+      client.aifCredentials._passwordEncrypted = encryptText(password);
     }
 
-    app.markModified('aifCredentials');
-    await app.save();
+    client.markModified('aifCredentials');
+    await client.save();
     return ApiResponse.success(res, 'AIF credentials saved', {
-      email: app.aifCredentials.email,
-      mobile: app.aifCredentials.mobile,
-      hasPassword: !!app.aifCredentials._passwordEncrypted,
+      email: client.aifCredentials.email,
+      mobile: client.aifCredentials.mobile,
+      hasPassword: !!client.aifCredentials._passwordEncrypted,
     });
   } catch (err) {
     next(err);

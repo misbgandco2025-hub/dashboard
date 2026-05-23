@@ -67,8 +67,6 @@ const timelineSchema = new mongoose.Schema({
 
 // ── NHB Details Sub-schema ────────────────────────────────────────────────────
 const nhbDetailsSchema = new mongoose.Schema({
-  nhbId:                  { type: String, trim: true },
-  _nhbPasswordEncrypted:  { type: String },
   nhbProjectCode:         { type: String, trim: true },
   nhbPortalStatus: {
     type: String,
@@ -76,10 +74,6 @@ const nhbDetailsSchema = new mongoose.Schema({
     default: 'goc-new',
   },
 }, { _id: false });
-
-nhbDetailsSchema.virtual('nhbPassword')
-  .set(function (val) { if (val) this._nhbPasswordEncrypted = encryptText(val); })
-  .get(function () { return this._nhbPasswordEncrypted ? decryptText(this._nhbPasswordEncrypted) : ''; });
 
 // ── GOC Details Sub-schema ────────────────────────────────────────────────────
 const gocDetailsSchema = new mongoose.Schema({
@@ -262,14 +256,6 @@ const subsidyApplicationSchema = new mongoose.Schema(
     portalCredentials:  [portalCredentialSchema],
     queries:            [querySchema],
     timeline:           [timelineSchema],
-
-    // ── Existing GOC portal credentials (email/mobile/password) ──────────────
-    gocCredentials: {
-      userId:             { type: String, trim: true },
-      email:              { type: String, trim: true },
-      mobile:             { type: String, trim: true },
-      _passwordEncrypted: { type: String },
-    },
 
     isDeleted:  { type: Boolean, default: false },
     createdBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

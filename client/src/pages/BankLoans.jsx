@@ -1063,12 +1063,18 @@ const BankLoanDetail = ({ application, onBack }) => {
         )}
 
         {activeTab === 'info' && (
-          <ApplicationInfoPanel
-            applicationId={app._id ?? application._id}
-            app={app}
-            qc={qc}
-            can={can}
-          />
+          <div className="space-y-8">
+            <ApplicationInfoPanel
+              applicationId={app._id ?? application._id}
+              app={app}
+              qc={qc}
+              can={can}
+            />
+            <AifCredentialsPanel
+              applicationId={app._id ?? application._id}
+              credentials={app.clientId?.aifCredentials}
+            />
+          </div>
         )}
 
         {activeTab === 'documents' && (

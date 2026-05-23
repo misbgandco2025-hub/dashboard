@@ -9,7 +9,7 @@ const { notifyAssignment, notifyStatusChange, notifyQueryRaised, notifyDocumentU
 const populateOptions = [
   {
     path: 'clientId',
-    select: 'clientId name email mobile businessName bankName branchName vendorId sourceType',
+    select: 'clientId name email mobile businessName bankName branchName vendorId sourceType gocCredentials nhbCredentials aifCredentials',
     populate: { path: 'vendorId', select: 'vendorName vendorCode' },
   },
   { path: 'assignedTo', select: 'fullName username' },
@@ -233,11 +233,12 @@ const updateApplication = async (req, res, next) => {
       app.geoTaggingDate = new Date();
     }
 
-    // ── nhbDetails: merge + encrypt password ──────────────────────────────────
+    // ── nhbDetails: merge + encrypt password (now split between App and Client) ─
     if (req.body.nhbDetails) {
       const nd = req.body.nhbDetails;
       if (!app.nhbDetails) app.nhbDetails = {};
-      if (nd.nhbId !== undefined) app.nhbDetails.nhbId = nd.nhbId;
+      
+      // Application-specific fields
       if (nd.nhbProjectCode !== undefined) app.nhbDetails.nhbProjectCode = nd.nhbProjectCode;
       if (nd.nhbPortalStatus !== undefined) {
         const prevNhbStatus = app.nhbDetails.nhbPortalStatus;
@@ -253,10 +254,19 @@ const updateApplication = async (req, res, next) => {
           });
         }
       }
-      if (nd.nhbPassword) {
-        app.nhbDetails._nhbPasswordEncrypted = encryptText(nd.nhbPassword);
-      }
       app.markModified('nhbDetails');
+
+      // Client-specific credentials
+      if (nd.nhbId !== undefined || nd.nhbPassword) {
+        const client = await Client.findById(app.clientId);
+        if (client) {
+          if (!client.nhbCredentials) client.nhbCredentials = {};
+          if (nd.nhbId !== undefined) client.nhbCredentials.nhbId = nd.nhbId;
+          if (nd.nhbPassword) client.nhbCredentials._passwordEncrypted = encryptText(nd.nhbPassword);
+          client.markModified('nhbCredentials');
+          await client.save();
+        }
+      }
     }
 
     // ── gocDetails: shallow merge + timeline ──────────────────────────────────
@@ -629,19 +639,23 @@ const updateGocCredentials = async (req, res, next) => {
     const app = await SubsidyApplication.findOne({ _id: req.params.id, isDeleted: false });
     if (!app) return next(ApiError.notFound('Application not found.'));
 
-    if (!app.gocCredentials) app.gocCredentials = {};
-    if (userId !== undefined) app.gocCredentials.userId = userId;
-    if (email !== undefined) app.gocCredentials.email = email;
-    if (mobile !== undefined) app.gocCredentials.mobile = mobile;
-    if (password) app.gocCredentials._passwordEncrypted = encryptText(password);
+    const client = await Client.findById(app.clientId);
+    if (!client) return next(ApiError.notFound('Client not found.'));
 
-    app.markModified('gocCredentials');
-    await app.save();
+    if (!client.gocCredentials) client.gocCredentials = {};
+    if (userId !== undefined) client.gocCredentials.userId = userId;
+    if (email !== undefined) client.gocCredentials.email = email;
+    if (mobile !== undefined) client.gocCredentials.mobile = mobile;
+    if (password) client.gocCredentials._passwordEncrypted = encryptText(password);
+
+    client.markModified('gocCredentials');
+    await client.save();
+    
     return ApiResponse.success(res, 'GOC credentials saved', {
-      userId: app.gocCredentials.userId,
-      email: app.gocCredentials.email,
-      mobile: app.gocCredentials.mobile,
-      hasPassword: !!app.gocCredentials._passwordEncrypted,
+      userId: client.gocCredentials.userId,
+      email: client.gocCredentials.email,
+      mobile: client.gocCredentials.mobile,
+      hasPassword: !!client.gocCredentials._passwordEncrypted,
     });
   } catch (err) {
     next(err);
