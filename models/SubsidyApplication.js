@@ -86,7 +86,7 @@ const gocDetailsSchema = new mongoose.Schema({
   gocApprovalReferenceNumber: { type: String, trim: true },
   gocStatus: {
     type: String,
-    enum: ['not-started', 'applied', 'query', 'approved', 'rejected'],
+    enum: ['not-started', 'applied', 'query', 'approved', 'rejected', 'not-applicable'],
     default: 'not-started',
   },
 }, { _id: false });

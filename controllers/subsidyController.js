@@ -200,7 +200,8 @@ const updateApplication = async (req, res, next) => {
     }
 
     if (req.body.gocDetails && req.body.gocDetails.gocStatus &&
-      req.body.gocDetails.gocStatus !== 'not-started') {
+      req.body.gocDetails.gocStatus !== 'not-started' &&
+      req.body.gocDetails.gocStatus !== 'not-applicable') {
       const Client = require('../models/Client');
       const client = await Client.findById(app.clientId);
       if (client && (client.clientType === 'both' || client.clientType === 'bank-loan')) {
@@ -214,7 +215,8 @@ const updateApplication = async (req, res, next) => {
 
     if (req.body.subsidyClaim && req.body.subsidyClaim.claimStatus &&
       req.body.subsidyClaim.claimStatus !== 'not-submitted' &&
-      app.gocDetails?.gocStatus !== 'approved') {
+      app.gocDetails?.gocStatus !== 'approved' &&
+      app.gocDetails?.gocStatus !== 'not-applicable') {
       return next(ApiError.badRequest('Subsidy claim requires GOC to be approved first.'));
     }
 

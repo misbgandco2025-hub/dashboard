@@ -55,11 +55,12 @@ const NHB_PORTAL_META = {
 };
 
 const GOC_STATUS_META = {
-  'not-started': { label: 'Not Started',  color: 'gray'   },
-  applied:       { label: 'Applied',      color: 'blue'   },
-  query:         { label: 'Query Raised', color: 'orange' },
-  approved:      { label: 'Approved',     color: 'green'  },
-  rejected:      { label: 'Rejected',     color: 'red'    },
+  'not-started':    { label: 'Not Started',    color: 'gray'   },
+  'not-applicable': { label: 'Not Applicable', color: 'gray'   },
+  applied:          { label: 'Applied',        color: 'blue'   },
+  query:            { label: 'Query Raised',   color: 'orange' },
+  approved:         { label: 'Approved',       color: 'green'  },
+  rejected:         { label: 'Rejected',       color: 'red'    },
 };
 
 const LOAN_PREP_META = {
@@ -1413,7 +1414,7 @@ const Subsidies = () => {
     const gocStatus    = app.gocDetails?.gocStatus;
     const claimStatus  = app.subsidyClaim?.claimStatus;
     const gocRejected  = gocStatus === 'rejected';
-    const gocApproved  = gocStatus === 'approved';
+    const gocApproved  = gocStatus === 'approved' || gocStatus === 'not-applicable';
     const claimComplete = claimStatus === 'complete';
     const isRejected   = gocRejected || claimStatus === 'rejected';
 
