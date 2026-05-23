@@ -429,9 +429,11 @@ const AifCredentialsPanel = ({ applicationId, credentials }) => {
   });
   const [showPass, setShowPass] = useState(false);
 
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
+    if (editing) return;
     setForm({ email: credentials?.email ?? '', mobile: credentials?.mobile ?? '', password: '' });
-  }, [credentials]);
+  }, [credentials, editing]);
 
   const mutation = useMutation({
     mutationFn: (data) => updateAifCredentials(applicationId, data),
@@ -445,6 +447,12 @@ const AifCredentialsPanel = ({ applicationId, credentials }) => {
 
   const canEdit = can('bankLoans.update');
 
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => {
+    setForm({ email: credentials?.email ?? '', mobile: credentials?.mobile ?? '', password: '' });
+    setEditing(true);
+  };
+
   return (
     <div className="max-w-lg space-y-5">
       <div className="flex items-center justify-between">
@@ -453,7 +461,7 @@ const AifCredentialsPanel = ({ applicationId, credentials }) => {
           <p className="text-xs text-gray-400 mt-0.5">Portal login credentials for the AIF application</p>
         </div>
         {canEdit && !editing && (
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
+          <Button size="sm" variant="secondary" onClick={handleStartEdit}>Edit</Button>
         )}
       </div>
 
@@ -534,14 +542,16 @@ const LoanPreparationPanel = ({ applicationId, loanPreparation }) => {
     loanAmountCalculated: '',
   });
 
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
+    if (editing) return;
     setForm({
       preparationStatus:        loanPreparation?.preparationStatus ?? 'not-started',
       preparationStartDate:     loanPreparation?.preparationStartDate ? new Date(loanPreparation.preparationStartDate).toISOString().slice(0, 10) : '',
       preparationCompletedDate: loanPreparation?.preparationCompletedDate ? new Date(loanPreparation.preparationCompletedDate).toISOString().slice(0, 10) : '',
       loanAmountCalculated:     loanPreparation?.loanAmountCalculated ?? '',
     });
-  }, [loanPreparation]);
+  }, [loanPreparation, editing]);
 
   const mutation = useMutation({
     mutationFn: (data) => updateLoanPreparation(applicationId, data),
@@ -557,6 +567,17 @@ const LoanPreparationPanel = ({ applicationId, loanPreparation }) => {
   const canEdit = can('bankLoans.update');
   const prepMeta = LOAN_PREP_META[loanPreparation?.preparationStatus] || LOAN_PREP_META['not-started'];
 
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => {
+    setForm({
+      preparationStatus:        loanPreparation?.preparationStatus ?? 'not-started',
+      preparationStartDate:     loanPreparation?.preparationStartDate ? new Date(loanPreparation.preparationStartDate).toISOString().slice(0, 10) : '',
+      preparationCompletedDate: loanPreparation?.preparationCompletedDate ? new Date(loanPreparation.preparationCompletedDate).toISOString().slice(0, 10) : '',
+      loanAmountCalculated:     loanPreparation?.loanAmountCalculated ?? '',
+    });
+    setEditing(true);
+  };
+
   return (
     <div className="max-w-xl space-y-5">
       <div className="flex items-center justify-between">
@@ -565,7 +586,7 @@ const LoanPreparationPanel = ({ applicationId, loanPreparation }) => {
           <p className="text-xs text-gray-400 mt-0.5">Track preparation status before bank submission</p>
         </div>
         {canEdit && !editing && (
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
+          <Button size="sm" variant="secondary" onClick={handleStartEdit}>Edit</Button>
         )}
       </div>
 
@@ -649,7 +670,9 @@ const LoanSanctionPanel = ({ applicationId, loanSanction }) => {
     rejectionReason: '',
   });
 
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
+    if (editing) return;
     setForm({
       sanctionStatus:       loanSanction?.sanctionStatus ?? 'pending',
       sanctionDate:         loanSanction?.sanctionDate ? new Date(loanSanction.sanctionDate).toISOString().slice(0, 10) : '',
@@ -658,7 +681,7 @@ const LoanSanctionPanel = ({ applicationId, loanSanction }) => {
       sanctionConditions:   loanSanction?.sanctionConditions ?? '',
       rejectionReason:      loanSanction?.rejectionReason ?? '',
     });
-  }, [loanSanction]);
+  }, [loanSanction, editing]);
 
   const mutation = useMutation({
     mutationFn: (data) => updateLoanSanction(applicationId, data),
@@ -674,6 +697,19 @@ const LoanSanctionPanel = ({ applicationId, loanSanction }) => {
   const canEdit = can('bankLoans.update');
   const meta = SANCTION_META[loanSanction?.sanctionStatus] || SANCTION_META.pending;
 
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => {
+    setForm({
+      sanctionStatus:       loanSanction?.sanctionStatus ?? 'pending',
+      sanctionDate:         loanSanction?.sanctionDate ? new Date(loanSanction.sanctionDate).toISOString().slice(0, 10) : '',
+      sanctionedAmount:     loanSanction?.sanctionedAmount ?? '',
+      sanctionLetterNumber: loanSanction?.sanctionLetterNumber ?? '',
+      sanctionConditions:   loanSanction?.sanctionConditions ?? '',
+      rejectionReason:      loanSanction?.rejectionReason ?? '',
+    });
+    setEditing(true);
+  };
+
   return (
     <div className="max-w-xl space-y-5">
       <div className="flex items-center justify-between">
@@ -682,7 +718,7 @@ const LoanSanctionPanel = ({ applicationId, loanSanction }) => {
           <p className="text-xs text-gray-400 mt-0.5">Bank loan sanction / rejection outcome</p>
         </div>
         {canEdit && !editing && (
-          <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit</Button>
+          <Button size="sm" variant="secondary" onClick={handleStartEdit}>Edit</Button>
         )}
       </div>
 
@@ -787,7 +823,9 @@ const ApplicationInfoPanel = ({ applicationId, app, qc, can }) => {
     bankRefNumber: '', applicationDate: '', priority: 'medium',
   });
 
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
+    if (editing) return;
     setForm({
       loanAmount:      app?.loanAmount ?? '',
       loanScheme:      app?.loanScheme ?? '',
@@ -796,7 +834,7 @@ const ApplicationInfoPanel = ({ applicationId, app, qc, can }) => {
       applicationDate: app?.applicationDate ? new Date(app.applicationDate).toISOString().slice(0, 10) : '',
       priority:        app?.priority ?? 'medium',
     });
-  }, [app]);
+  }, [app, editing]);
 
   const mutation = useMutation({
     mutationFn: (data) => updateBankLoan(applicationId, data),
@@ -811,6 +849,19 @@ const ApplicationInfoPanel = ({ applicationId, app, qc, can }) => {
 
   const canEdit = can('bankLoans.update');
 
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => {
+    setForm({
+      loanAmount:      app?.loanAmount ?? '',
+      loanScheme:      app?.loanScheme ?? '',
+      loanType:        app?.loanType ?? '',
+      bankRefNumber:   app?.bankRefNumber ?? '',
+      applicationDate: app?.applicationDate ? new Date(app.applicationDate).toISOString().slice(0, 10) : '',
+      priority:        app?.priority ?? 'medium',
+    });
+    setEditing(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Editable section */}
@@ -821,7 +872,7 @@ const ApplicationInfoPanel = ({ applicationId, app, qc, can }) => {
             <p className="text-xs text-gray-400 mt-0.5">Loan amount, scheme, type and other core details</p>
           </div>
           {canEdit && !editing && (
-            <button className="text-sm text-primary-600 font-medium hover:underline" onClick={() => setEditing(true)}>Edit</button>
+            <button className="text-sm text-primary-600 font-medium hover:underline" onClick={handleStartEdit}>Edit</button>
           )}
         </div>
 

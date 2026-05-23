@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, Trash2, ChevronRight, Filter, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -119,9 +119,20 @@ const PrerequisiteAlert = ({ message }) => (
 );
 
 // ─── Reusable Editable Panel ─────────────────────────────────────────────────
+// Supports both uncontrolled (internal editing state) and controlled (editing + setEditing props)
+// so that parent panels can guard their useEffect syncs while the user is editing.
 
-const EditablePanel = ({ title, subtitle, canEdit, saving, onSave, onCancel, children, viewContent }) => {
-  const [editing, setEditing] = useState(false);
+const EditablePanel = ({ title, subtitle, canEdit, saving, onSave, onCancel, children, viewContent, editing: propEditing, setEditing: propSetEditing, onStartEdit }) => {
+  const [localEditing, setLocalEditing] = useState(false);
+  // Use controlled props if provided, otherwise fall back to internal state
+  const editing = propEditing !== undefined ? propEditing : localEditing;
+  const setEditing = propSetEditing !== undefined ? propSetEditing : setLocalEditing;
+
+  const handleEdit = () => {
+    onStartEdit?.();   // Parent can snapshot form data here before entering edit mode
+    setEditing(true);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -130,7 +141,7 @@ const EditablePanel = ({ title, subtitle, canEdit, saving, onSave, onCancel, chi
           {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
         </div>
         {canEdit && !editing && (
-          <button className="text-sm text-primary-600 font-medium hover:underline" onClick={() => setEditing(true)}>Edit</button>
+          <button className="text-sm text-primary-600 font-medium hover:underline" onClick={handleEdit}>Edit</button>
         )}
       </div>
       {!editing ? (
@@ -170,17 +181,30 @@ const invalidateBoth = (qc, applicationId) => {
 
 // ─── GOC Portal Panel ──────────────────────────────────────────────────────────────────────
 const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ userId: '', password: '', email: '', mobile: '' });
   const [showPass, setShowPass] = useState(false);
 
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
+    if (editing) return;
     setForm({
       userId:   credentials?.userId ?? '',
       password: '',
       email:    credentials?.email ?? '',
       mobile:   credentials?.mobile ?? '',
     });
-  }, [credentials]);
+  }, [credentials, editing]);
+
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => {
+    setForm({
+      userId:   credentials?.userId ?? '',
+      password: '',
+      email:    credentials?.email ?? '',
+      mobile:   credentials?.mobile ?? '',
+    });
+  };
 
   const mutation = useMutation({
     mutationFn: (data) => updateGocCredentials(applicationId, data),
@@ -195,6 +219,9 @@ const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
       title="GOC Portal Credentials"
       subtitle="Login details for the GOC government portal"
       canEdit={canEdit}
+      editing={editing}
+      setEditing={setEditing}
+      onStartEdit={handleStartEdit}
       saving={mutation.isPending}
       onSave={(close) => mutation.mutate({ userId: form.userId, email: form.email, mobile: form.mobile, password: form.password || undefined }, { onSuccess: close })}
       viewContent={
@@ -243,17 +270,30 @@ const GocPortalPanel = ({ applicationId, credentials, qc, can }) => {
 // ─── NHB Details Panel ────────────────────────────────────────────────────────
 
 const NhbDetailsPanel = ({ applicationId, nhbDetails, qc, can }) => {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ nhbId: '', nhbPassword: '', nhbProjectCode: '', nhbPortalStatus: '' });
   const [showPass, setShowPass] = useState(false);
 
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
+    if (editing) return;
     setForm({
-      nhbId:          nhbDetails?.nhbId ?? '',
-      nhbPassword:    '',
-      nhbProjectCode: nhbDetails?.nhbProjectCode ?? '',
+      nhbId:           nhbDetails?.nhbId ?? '',
+      nhbPassword:     '',
+      nhbProjectCode:  nhbDetails?.nhbProjectCode ?? '',
       nhbPortalStatus: nhbDetails?.nhbPortalStatus ?? 'goc-new',
     });
-  }, [nhbDetails]);
+  }, [nhbDetails, editing]);
+
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => {
+    setForm({
+      nhbId:           nhbDetails?.nhbId ?? '',
+      nhbPassword:     '',
+      nhbProjectCode:  nhbDetails?.nhbProjectCode ?? '',
+      nhbPortalStatus: nhbDetails?.nhbPortalStatus ?? 'goc-new',
+    });
+  };
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyNhbDetails(applicationId, data),
@@ -266,6 +306,9 @@ const NhbDetailsPanel = ({ applicationId, nhbDetails, qc, can }) => {
       title="NHB Portal Details"
       subtitle="NHB credentials and project information"
       canEdit={can('subsidies.update')}
+      editing={editing}
+      setEditing={setEditing}
+      onStartEdit={handleStartEdit}
       saving={mutation.isPending}
       onSave={(close) => mutation.mutate(form, { onSuccess: close })}
       viewContent={
@@ -343,13 +386,31 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
   const [bankDate, setBankDate]     = useState(app.gocBankVerificationDate ? new Date(app.gocBankVerificationDate).toISOString().slice(0, 10) : '');
   const [geoStatus, setGeoStatus]   = useState(app.geoTaggingStatus || 'not-started');
   const [geoDate, setGeoDate]       = useState(app.geoTaggingDate    ? new Date(app.geoTaggingDate).toISOString().slice(0, 10)    : '');
+  // Track the last applicationId we synced for — only force-sync when switching records
+  const syncedAppIdRef = useRef(applicationId);
 
   useEffect(() => {
+    const appChanged = syncedAppIdRef.current !== applicationId;
+    // Always sync when switching to a different application record
+    if (appChanged) {
+      syncedAppIdRef.current = applicationId;
+      setBankStatus(app.gocBankVerificationStatus || 'not-started');
+      setBankDate(app.gocBankVerificationDate ? new Date(app.gocBankVerificationDate).toISOString().slice(0, 10) : '');
+      setGeoStatus(app.geoTaggingStatus || 'not-started');
+      setGeoDate(app.geoTaggingDate ? new Date(app.geoTaggingDate).toISOString().slice(0, 10) : '');
+      return;
+    }
+    // For the same record, only sync if the user hasn't dirtied the form
+    // (i.e. local values still match server — means user hasn't started editing)
+    const isDirty =
+      bankStatus !== (app.gocBankVerificationStatus || 'not-started') ||
+      geoStatus  !== (app.geoTaggingStatus  || 'not-started');
+    if (isDirty) return;  // User is editing — don't overwrite their unsaved input
     setBankStatus(app.gocBankVerificationStatus || 'not-started');
     setBankDate(app.gocBankVerificationDate ? new Date(app.gocBankVerificationDate).toISOString().slice(0, 10) : '');
     setGeoStatus(app.geoTaggingStatus || 'not-started');
     setGeoDate(app.geoTaggingDate ? new Date(app.geoTaggingDate).toISOString().slice(0, 10) : '');
-  }, [app]);
+  }, [app, applicationId]);
 
   const handleBankStatusChange = (val) => {
     setBankStatus(val);
@@ -425,24 +486,32 @@ const VerificationPanel = ({ applicationId, app, qc, can }) => {
 // ─── GOC Application Panel ────────────────────────────────────────────────────
 
 const GocApplicationPanel = ({ applicationId, gocDetails, qc, can }) => {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     gocApplicationDate: '', gocReferenceNumber: '', gocApplicationNotes: '',
     gocStatus: 'not-started', gocQueryDescription: '', gocQueryResolutionNotes: '',
     gocApprovalDate: '', gocApprovalReferenceNumber: '',
   });
 
+  const buildFormFromServer = (d) => ({
+    gocApplicationDate:         d?.gocApplicationDate ? new Date(d.gocApplicationDate).toISOString().slice(0, 10) : '',
+    gocReferenceNumber:         d?.gocReferenceNumber ?? '',
+    gocApplicationNotes:        d?.gocApplicationNotes ?? '',
+    gocStatus:                  d?.gocStatus ?? 'not-started',
+    gocQueryDescription:        d?.gocQueryDescription ?? '',
+    gocQueryResolutionNotes:    d?.gocQueryResolutionNotes ?? '',
+    gocApprovalDate:            d?.gocApprovalDate ? new Date(d.gocApprovalDate).toISOString().slice(0, 10) : '',
+    gocApprovalReferenceNumber: d?.gocApprovalReferenceNumber ?? '',
+  });
+
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
-    setForm({
-      gocApplicationDate:         gocDetails?.gocApplicationDate ? new Date(gocDetails.gocApplicationDate).toISOString().slice(0, 10) : '',
-      gocReferenceNumber:         gocDetails?.gocReferenceNumber ?? '',
-      gocApplicationNotes:        gocDetails?.gocApplicationNotes ?? '',
-      gocStatus:                  gocDetails?.gocStatus ?? 'not-started',
-      gocQueryDescription:        gocDetails?.gocQueryDescription ?? '',
-      gocQueryResolutionNotes:    gocDetails?.gocQueryResolutionNotes ?? '',
-      gocApprovalDate:            gocDetails?.gocApprovalDate ? new Date(gocDetails.gocApprovalDate).toISOString().slice(0, 10) : '',
-      gocApprovalReferenceNumber: gocDetails?.gocApprovalReferenceNumber ?? '',
-    });
-  }, [gocDetails]);
+    if (editing) return;
+    setForm(buildFormFromServer(gocDetails));
+  }, [gocDetails, editing]);
+
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => setForm(buildFormFromServer(gocDetails));
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyGocDetails(applicationId, data),
@@ -487,6 +556,9 @@ const GocApplicationPanel = ({ applicationId, gocDetails, qc, can }) => {
         title="GOC Application"
         subtitle="Government Order Certificate application details and status"
         canEdit={can('subsidies.update')}
+        editing={editing}
+        setEditing={setEditing}
+        onStartEdit={handleStartEdit}
         saving={mutation.isPending}
         onSave={(close) => {
           const payload = {
@@ -586,10 +658,11 @@ const GocApplicationPanel = ({ applicationId, gocDetails, qc, can }) => {
 // ─── Subsidy Claim Panel (NEW, with prerequisite guard) ──────────────────────
 
 const SubsidyClaimPanel = ({ applicationId, subsidyClaim, gocDetails, qc, can }) => {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     claimSubmissionDate: '', claimReferenceNumber: '',
     approvedSubsidyAmount: '', claimApprovalDate: '',
-    disbursementDate: '', claimStatus: 'not-submitted',
+    disbursementDate: '', claimStatus: 'pending',
     rejectionReason: '', rejectionDate: '',
   });
 
@@ -597,18 +670,25 @@ const SubsidyClaimPanel = ({ applicationId, subsidyClaim, gocDetails, qc, can })
     return gocDetails?.gocStatus === 'approved';
   }, [gocDetails]);
 
+  const buildFormFromServer = (d) => ({
+    claimSubmissionDate:   d?.claimSubmissionDate ? new Date(d.claimSubmissionDate).toISOString().slice(0, 10) : '',
+    claimReferenceNumber:  d?.claimReferenceNumber ?? '',
+    approvedSubsidyAmount: d?.approvedSubsidyAmount ?? '',
+    claimApprovalDate:     d?.claimApprovalDate ? new Date(d.claimApprovalDate).toISOString().slice(0, 10) : '',
+    disbursementDate:      d?.disbursementDate ? new Date(d.disbursementDate).toISOString().slice(0, 10) : '',
+    claimStatus:           d?.claimStatus ?? 'pending',
+    rejectionReason:       d?.rejectionReason ?? '',
+    rejectionDate:         d?.rejectionDate ? new Date(d.rejectionDate).toISOString().slice(0, 10) : '',
+  });
+
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
-    setForm({
-      claimSubmissionDate:   subsidyClaim?.claimSubmissionDate ? new Date(subsidyClaim.claimSubmissionDate).toISOString().slice(0, 10) : '',
-      claimReferenceNumber:  subsidyClaim?.claimReferenceNumber ?? '',
-      approvedSubsidyAmount: subsidyClaim?.approvedSubsidyAmount ?? '',
-      claimApprovalDate:     subsidyClaim?.claimApprovalDate ? new Date(subsidyClaim.claimApprovalDate).toISOString().slice(0, 10) : '',
-      disbursementDate:      subsidyClaim?.disbursementDate ? new Date(subsidyClaim.disbursementDate).toISOString().slice(0, 10) : '',
-      claimStatus:           subsidyClaim?.claimStatus ?? 'pending',
-      rejectionReason:       subsidyClaim?.rejectionReason ?? '',
-      rejectionDate:         subsidyClaim?.rejectionDate ? new Date(subsidyClaim.rejectionDate).toISOString().slice(0, 10) : '',
-    });
-  }, [subsidyClaim]);
+    if (editing) return;
+    setForm(buildFormFromServer(subsidyClaim));
+  }, [subsidyClaim, editing]);
+
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => setForm(buildFormFromServer(subsidyClaim));
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidyClaim(applicationId, data),
@@ -625,6 +705,9 @@ const SubsidyClaimPanel = ({ applicationId, subsidyClaim, gocDetails, qc, can })
         title="JIT / Subsidy Claim"
         subtitle="Claim submission and disbursement tracking"
         canEdit={can('subsidies.update') && canSubmitClaim}
+        editing={editing}
+        setEditing={setEditing}
+        onStartEdit={handleStartEdit}
         saving={mutation.isPending}
         onSave={(close) => {
           const payload = {
@@ -721,7 +804,12 @@ const PaymentPanel = ({ applicationId, paymentDetails, subsidyClaim, qc, can }) 
     return subsidyClaim?.claimStatus === 'complete';
   }, [subsidyClaim]);
 
+  // Payment panel is always-visible (no edit button) but we still guard against
+  // background refetch overwriting changes the user has made but not yet saved.
+  // We detect "dirtiness" by checking if paymentReceived differs from the server.
   useEffect(() => {
+    const isDirty = form.paymentReceived !== (paymentDetails?.paymentReceived ?? false);
+    if (isDirty) return;  // User has changed something — don't overwrite
     setForm({
       paymentReceived:      paymentDetails?.paymentReceived ?? false,
       paymentAmount:        paymentDetails?.paymentAmount ?? '',
@@ -819,6 +907,7 @@ const PaymentPanel = ({ applicationId, paymentDetails, subsidyClaim, qc, can }) 
 // ─── Info Panel ───────────────────────────────────────────────────────────────
 
 const SubsidyInfoPanel = ({ applicationId, app, qc, can }) => {
+  const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     schemeName: '',
     schemeType: 'none',
@@ -830,18 +919,25 @@ const SubsidyInfoPanel = ({ applicationId, app, qc, can }) => {
     releaseDate: '',
   });
 
+  const buildFormFromServer = (a) => ({
+    schemeName:           a.schemeName || '',
+    schemeType:           a.schemeType || 'none',
+    departmentName:       a.departmentName || '',
+    subsidyAmountApplied: a.subsidyAmountApplied || '',
+    projectCost:          a.projectCost || '',
+    subsidyPercentage:    a.subsidyPercentage || '',
+    approvedAmount:       a.approvedAmount || '',
+    releaseDate:          a.releaseDate ? new Date(a.releaseDate).toISOString().slice(0, 10) : '',
+  });
+
+  // Only sync server data → form when NOT editing (prevents background refetch from wiping unsaved input)
   useEffect(() => {
-    setForm({
-      schemeName: app.schemeName || '',
-      schemeType: app.schemeType || 'none',
-      departmentName: app.departmentName || '',
-      subsidyAmountApplied: app.subsidyAmountApplied || '',
-      projectCost: app.projectCost || '',
-      subsidyPercentage: app.subsidyPercentage || '',
-      approvedAmount: app.approvedAmount || '',
-      releaseDate: app.releaseDate ? new Date(app.releaseDate).toISOString().slice(0, 10) : '',
-    });
-  }, [app]);
+    if (editing) return;
+    setForm(buildFormFromServer(app));
+  }, [app, editing]);
+
+  // Snapshot server data into form at the moment the user clicks Edit
+  const handleStartEdit = () => setForm(buildFormFromServer(app));
 
   const mutation = useMutation({
     mutationFn: (data) => updateSubsidy(applicationId, data),
@@ -856,6 +952,9 @@ const SubsidyInfoPanel = ({ applicationId, app, qc, can }) => {
       title="Application Details"
       subtitle="Core information and applied amounts"
       canEdit={canEdit}
+      editing={editing}
+      setEditing={setEditing}
+      onStartEdit={handleStartEdit}
       saving={mutation.isPending}
       onSave={(close) => {
         const payload = {

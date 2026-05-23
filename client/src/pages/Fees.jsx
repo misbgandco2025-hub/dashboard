@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Search, Eye, Trash2, ChevronRight, X, TrendingUp,
@@ -406,8 +406,12 @@ const EditPaymentModal = ({ isOpen, onClose, fee, payment }) => {
   const qc = useQueryClient();
   const { register, handleSubmit, reset, formState: { errors } } = useForm();
 
+  // Only reset the form when the modal transitions from closed → open.
+  // Guarding with a ref prevents background query refetches from wiping
+  // the user's unsaved edits while the modal is open.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (payment && isOpen) {
+    if (payment && isOpen && !wasOpenRef.current) {
       reset({
         amount: payment.amount,
         paidDate: payment.paidDate ? new Date(payment.paidDate).toISOString().slice(0, 10) : '',
@@ -416,6 +420,7 @@ const EditPaymentModal = ({ isOpen, onClose, fee, payment }) => {
         remarks: payment.remarks || '',
       });
     }
+    wasOpenRef.current = isOpen;
   }, [payment, isOpen, reset]);
 
   const mutation = useMutation({
@@ -766,8 +771,12 @@ const EditFeeModal = ({ isOpen, onClose, fee }) => {
   const qc = useQueryClient();
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm();
 
+  // Only reset the form when the modal transitions from closed → open.
+  // Guarding with a ref prevents background query refetches from wiping
+  // the user's unsaved edits while the modal is open.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (fee && isOpen) {
+    if (fee && isOpen && !wasOpenRef.current) {
       reset({
         description: fee.description,
         feeType: fee.feeType,
@@ -776,6 +785,7 @@ const EditFeeModal = ({ isOpen, onClose, fee }) => {
         remarks: fee.remarks || '',
       });
     }
+    wasOpenRef.current = isOpen;
   }, [fee, isOpen, reset]);
 
   const baseAmount = parseFloat(watch('baseAmount') || 0);
